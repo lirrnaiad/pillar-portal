@@ -1,0 +1,16 @@
+packages: []
+
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+  msw: false
+
+# pnpm 12's minimumReleaseAge policy refuses packages published too recently.
+# vitest 5.0.2 (pinned ~5.0.2 by Story 1.1) and its @vitest/mocker and
+# @vitest/spy 5.0.2 were still inside that window when installed, so they are
+# exempt. Remove these entries once 5.0.2 is older than the window (the install
+# then passes without them), and never add a package here without a reason.
+minimumReleaseAgeExclude:
+  - "@vitest/mocker@5.0.2"
+  - "@vitest/spy@5.0.2"
+  - vitest@5.0.2

@@ -1,0 +1,175 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Dark mode is out of scope at launch (DESIGN.md › Colors). The variant stays
+   so shadcn components compile; no `.dark` values are defined. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * DESIGN.md tokens. This is the only file under src/ allowed to hold a hex
+ * color (`pnpm check:hex`). Change a token here, never a component.
+ */
+@theme static {
+  /* Brand palette (fixed by The Pillar) */
+  --color-ink: #101010;
+  --color-navy: #07253f;
+  --color-tan: #dfcfb6;
+  --color-white: #ffffff;
+  --color-brand-gold: #f3b229; /* identity only: the header rule, the logo area */
+
+  /* DESIGN.md semantic values, renamed because their DESIGN.md names collide
+     with shadcn's variables (mapped onto them in :root below) */
+  --color-canvas: #f4f1eb; /* DESIGN.md background */
+  --color-body: #1f1f1f; /* DESIGN.md foreground */
+  --color-tan-wash: #eee7dc; /* DESIGN.md muted */
+  --color-body-muted: #6b665e; /* DESIGN.md muted-foreground */
+  --color-hairline: #e2dfd9; /* DESIGN.md border */
+  --color-field-edge: #86817a; /* DESIGN.md input */
+  --color-card-edge: #f1f1f1;
+
+  /* Status accents: 8px dots and badge tints only, never large surfaces */
+  --color-status-progress: #5e7c99;
+  --color-status-progress-tint: #e2e7ed;
+  --color-status-progress-text: #2f4760;
+  --color-status-positive: #7c8b6f;
+  --color-status-positive-tint: #e7eae5;
+  --color-status-positive-text: #3f4a2a;
+  --color-status-attention: #a6674b;
+  --color-status-attention-tint: #efe4df;
+  --color-status-attention-text: #6e3a26;
+  --color-status-neutral: #a3a3a3;
+  --color-status-neutral-tint: #ebeef0;
+  --color-status-neutral-text: #07253f;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* Named spacing (Tailwind's 4-based scale is inherited) */
+  --spacing-card-padding: 14px;
+  --spacing-column-gap: 14px;
+  --spacing-page-margin-mobile: 16px;
+  --spacing-page-margin-desktop: 32px;
+
+  /* Fonts. Body stays on the shadcn sans ramp. The Elgraine Black demo font
+     is development-only and never committed; the stack falls back to Georgia. */
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-heading: var(--font-serif);
+  --font-wordmark: "Elgraine Black", Georgia, "Times New Roman", serif;
+
+  /* Type ramp */
+  --text-wordmark: 28px;
+  --text-wordmark--line-height: 1;
+  --text-wordmark--font-weight: 900;
+  --text-wordmark--letter-spacing: 0.02em;
+  --text-display: 30px;
+  --text-display--line-height: 1.2;
+  --text-display--font-weight: 700;
+  --text-display--letter-spacing: normal;
+  --text-heading: 20px;
+  --text-heading--line-height: 1.3;
+  --text-heading--font-weight: 700;
+  --text-heading--letter-spacing: normal;
+  --text-heading-sm: 16px;
+  --text-heading-sm--line-height: 1.35;
+  --text-heading-sm--font-weight: 700;
+  --text-heading-sm--letter-spacing: normal;
+  --text-status-badge: 11.5px;
+  --text-status-badge--font-weight: 600;
+
+  /* The single card shadow */
+  --shadow-card:
+    0 1px 2px rgba(16, 16, 16, 0.06), 0 1px 1px rgba(16, 16, 16, 0.03);
+}
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* shadcn variables mapped to the DESIGN.md tokens */
+  --background: var(--color-canvas);
+  --foreground: var(--color-body);
+  --card: var(--color-white);
+  --card-foreground: var(--color-body);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-body);
+  --primary: var(--color-navy);
+  --primary-foreground: var(--color-white);
+  --muted: var(--color-tan-wash);
+  --muted-foreground: var(--color-body-muted);
+  --border: var(--color-hairline);
+  --input: var(--color-field-edge);
+  --ring: var(--color-navy);
+
+  /* shadcn defaults, unchanged */
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

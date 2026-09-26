@@ -1,0 +1,53 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# env files: only the example is committed
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# planning material and local tooling: never published
+_bmad/
+_bmad-output/
+.claude/
+docs/
+docs/private/
+
+# the Elgraine wordmark font files (demo licence, never committed), any case
+*[Ee][Ll][Gg][Rr][Aa][Ii][Nn][Ee]*.[Oo][Tt][Ff]
+*[Ee][Ll][Gg][Rr][Aa][Ii][Nn][Ee]*.[Tt][Tt][Ff]
+*[Ee][Ll][Gg][Rr][Aa][Ii][Nn][Ee]*.[Ww][Oo][Ff][Ff]
+*[Ee][Ll][Gg][Rr][Aa][Ii][Nn][Ee]*.[Ww][Oo][Ff][Ff]2
