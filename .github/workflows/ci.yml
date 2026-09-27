@@ -18,13 +18,17 @@ jobs:
   ci:
     name: ci
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
     env:
-      # The .env.example value. Next inlines NEXT_PUBLIC_* at build time and
-      # `next typegen` loads next.config.ts, which validates it.
+      # The .env.example values. Next inlines NEXT_PUBLIC_* at build time and
+      # `next typegen` loads next.config.ts, which validates them. The
+      # Supabase pair points at the local stack started below; the key is the
+      # CLI's fixed demo publishable key.
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,6 +55,20 @@ jobs:
 
       - name: Unit tests
         run: pnpm test
+
+      # The database only (no Auth, API or Storage containers), which is all
+      # the next three steps need. It applies the migrations on start.
+      - name: Start local database
+        run: pnpm exec supabase db start
+
+      - name: Apply migrations from scratch
+        run: pnpm exec supabase db reset
+
+      - name: pgTAP (catalog test)
+        run: pnpm exec supabase test db
+
+      - name: Generated types match the schema
+        run: pnpm db:types && git diff --exit-code -- src/lib/supabase/database.types.ts
 
       - name: Build
         run: pnpm build

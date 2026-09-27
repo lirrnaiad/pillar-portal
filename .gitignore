@@ -39,6 +39,14 @@ pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# supabase CLI state: the linked project ref, cached versions, local branches;
+# a local JWT signing keys file (see supabase/config.toml); and the temp file
+# `pnpm db:types` writes before moving it into place
+supabase/.temp/
+supabase/.branches/
+supabase/signing_keys.json
+src/lib/supabase/database.types.ts.tmp
+
 # planning material and local tooling: never published
 _bmad/
 _bmad-output/

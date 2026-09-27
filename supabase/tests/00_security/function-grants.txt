@@ -1,0 +1,16 @@
+# Every EXECUTE grant on a function in the `public` and `private` schemas,
+# other than the owner's own, one per line:
+#
+#   <grantee> <schema>.<name>(<argument types>)
+#
+# e.g.  authenticated public.task_capabilities(uuid[])
+#       service_role public.submit_application(text, uuid)
+#
+# The grantee is a role name, or `public` for PUBLIC. Argument types are
+# written as Postgres prints them (`oidvectortypes`): comma plus space between
+# types, no argument names. Lines starting with `#` and blank lines are
+# ignored; order doesn't matter.
+#
+# supabase/tests/00_security/catalog.test.sql compares this list with the
+# database and prints the extra and missing lines when they differ. Add or
+# change a line in the same change as the migration that grants it.
