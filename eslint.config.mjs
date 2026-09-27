@@ -18,6 +18,8 @@ const ENV_MODULES = ["src/lib/env.server.ts", "src/lib/env.client.ts"]
 const CN_WRAPPER = "src/lib/utils.ts"
 const ENV_MESSAGE =
   "Read environment variables through src/lib/env.server.ts or src/lib/env.client.ts (AD-6)."
+const GET_SESSION_MESSAGE =
+  "Get the caller from supabase.auth.getClaims(), which verifies the token. getSession() trusts the cookie (AD-7)."
 
 // Every file under src/ that is not inside src/app.
 const outsideApp = ["./src/!(app)/**/*", "./src/*"]
@@ -87,6 +89,20 @@ function restrictedImports({ cn, process }) {
   return ["error", { paths, patterns }]
 }
 
+// `no-restricted-properties` options are replaced the same way. Every file
+// under src/ bans getSession; all but the env modules also ban process.env.
+function restrictedProperties({ processEnv }) {
+  const properties = [{ property: "getSession", message: GET_SESSION_MESSAGE }]
+  if (processEnv) {
+    properties.push({
+      object: "process",
+      property: "env",
+      message: ENV_MESSAGE,
+    })
+  }
+  return ["error", ...properties]
+}
+
 /**
  * Builds the config for the project at `rootDir`. The zones, the tsconfig
  * that resolves `@/` and the slice check all hang off it, so tests can lint
@@ -131,6 +147,17 @@ export function createConfig(rootDir) {
       },
     },
     {
+      // AD-7: server code reads identity from getClaims(), never getSession().
+      // This block matches the env modules too; the next restates it.
+      name: "pillar/no-get-session",
+      files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+      rules: {
+        "no-restricted-properties": restrictedProperties({
+          processEnv: false,
+        }),
+      },
+    },
+    {
       // AD-6: only the two env modules touch process (and so process.env).
       name: "pillar/env-access",
       files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
@@ -140,10 +167,9 @@ export function createConfig(rootDir) {
           "error",
           { name: "process", message: ENV_MESSAGE },
         ],
-        "no-restricted-properties": [
-          "error",
-          { object: "process", property: "env", message: ENV_MESSAGE },
-        ],
+        "no-restricted-properties": restrictedProperties({
+          processEnv: true,
+        }),
         "no-restricted-syntax": [
           "error",
           {

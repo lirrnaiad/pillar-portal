@@ -10,9 +10,10 @@ const FIXTURE_TSCONFIG = JSON.stringify({
   compilerOptions: {
     module: "esnext",
     moduleResolution: "bundler",
+    jsx: "preserve",
     paths: { "@/*": ["./src/*"] },
   },
-  include: ["**/*.ts"],
+  include: ["**/*.ts", "**/*.tsx"],
 })
 
 let fixture: Fixture | undefined
@@ -58,6 +59,56 @@ describe("eslint architecture rules", { timeout: 30_000 }, () => {
       "src/foo.ts"
     )
     expect(rules(messages)).toContain("no-restricted-globals")
+  })
+
+  it("still reports process.env in src/ alongside the getSession ban", async () => {
+    const messages = await lint(
+      { "src/foo.ts": "export const x = process.env.FOO\n" },
+      "src/foo.ts"
+    )
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        ruleId: "no-restricted-properties",
+        message: expect.stringContaining("env.server.ts"),
+      })
+    )
+  })
+
+  it.each([
+    ["a call in src/lib", "src/lib/who.ts", "supabase.auth.getSession()"],
+    [
+      "a destructure in src/lib",
+      "src/lib/who.ts",
+      "const { getSession } = supabase.auth",
+    ],
+    [
+      "a call in an env module",
+      "src/lib/env.server.ts",
+      "supabase.auth.getSession()",
+    ],
+    [
+      "a destructure in an env module",
+      "src/lib/env.client.ts",
+      "const { getSession } = supabase.auth",
+    ],
+    [
+      "a call in a page under src/app",
+      "src/app/x/page.tsx",
+      "export default async function Page() {\n  await supabase.auth.getSession()\n  return <main />\n}",
+    ],
+  ])("reports getSession: %s", async (_label, file, code) => {
+    const messages = await lint(
+      {
+        [file]: `declare const supabase: any\n${code}\nexport {}\n`,
+      },
+      file
+    )
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        ruleId: "no-restricted-properties",
+        message: expect.stringContaining("getClaims()"),
+      })
+    )
   })
 
   it("reports a two-file import cycle", async () => {

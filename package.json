@@ -16,9 +16,12 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "check:hex": "node scripts/check-no-hex.mjs",
-    "check:bundle": "node --conditions=react-server scripts/check-bundle-secrets.mjs"
+    "check:bundle": "node --conditions=react-server scripts/check-bundle-secrets.mjs",
+    "db:types": "supabase gen types typescript --local --schema public > src/lib/supabase/database.types.ts.tmp && mv src/lib/supabase/database.types.ts.tmp src/lib/supabase/database.types.ts || { rm -f src/lib/supabase/database.types.ts.tmp; exit 1; }"
   },
   "dependencies": {
+    "@supabase/ssr": "~0.12.7",
+    "@supabase/supabase-js": "~2.117.2",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "lucide-react": "^1.48.0",
@@ -40,6 +43,7 @@
     "eslint-config-next": "~16.3.6",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
+    "supabase": "~2.117.0",
     "tailwindcss": "~4.3.3",
     "typescript": "~5.9.3",
     "vitest": "~5.0.2"
