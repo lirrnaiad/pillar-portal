@@ -20,6 +20,9 @@ import { MemberShell } from "./member-shell"
 const { signOutAction } = vi.hoisted(() => ({ signOutAction: vi.fn() }))
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }))
+vi.mock("@/lib/env.client", () => ({
+  clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
+}))
 vi.mock("@/features/members/actions", () => ({
   signInAsPersonaAction: vi.fn(),
   signOutAction,

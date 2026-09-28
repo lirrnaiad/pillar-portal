@@ -28,16 +28,21 @@ export async function createClient() {
           return cookieStore.getAll()
         },
         // The no-store headers passed as the second argument can't be set
-        // through next/headers. Session refreshes belong in src/proxy.ts
-        // (Story 1.4), which owns the response and sets both.
+        // through next/headers. src/proxy.ts refreshes the session before
+        // every /dashboard and /admin request; it owns the response and sets
+        // both.
         setAll(cookiesToSet) {
           try {
             for (const { name, value, options } of cookiesToSet) {
               cookieStore.set(name, value, options)
             }
           } catch {
-            // Server Components can't set cookies, so this throws there. It is
-            // safe to ignore: the proxy writes the refreshed session.
+            // Server Components can't set cookies, so this throws there. Under
+            // /dashboard and /admin it is safe to ignore: src/proxy.ts has
+            // already written the refreshed session and forwarded it to the
+            // render. On unproxied pages (/login, /) a refresh done here is
+            // dropped; the redirect to a proxied path refreshes again within
+            // refresh_token_reuse_interval.
           }
         },
       },

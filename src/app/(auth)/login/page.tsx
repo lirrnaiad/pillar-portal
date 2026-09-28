@@ -1,7 +1,12 @@
 import type { Metadata } from "next"
+import { redirect } from "next/navigation"
 
 import { AppHeader } from "@/components/app-header"
-import { PersonaSignIn } from "@/features/members"
+import {
+  getCurrentMember,
+  PersonaSignIn,
+  safeReturnPath,
+} from "@/features/members"
 import { personasEnabled } from "@/lib/env.server"
 
 export const metadata: Metadata = {
@@ -10,7 +15,17 @@ export const metadata: Metadata = {
 
 // Prototype sign-in (AD-7): persona buttons while PROTOTYPE_PERSONAS is on.
 // Google and Discord replace them in Story 2.1.
-export default function LoginPage() {
+//
+// `next` is where the visitor was going; src/proxy.ts sets it when it sends a
+// signed-out visitor here. An active member is sent straight there. Pending
+// and rowless callers see the page as anyone signed out does.
+export default async function LoginPage({ searchParams }: PageProps<"/login">) {
+  const { next } = await searchParams
+  const returnPath = safeReturnPath(next)
+
+  const member = await getCurrentMember()
+  if (member && member.role !== "pending") redirect(returnPath)
+
   return (
     <>
       <AppHeader />
@@ -22,7 +37,7 @@ export default function LoginPage() {
               <p className="mt-2 mb-4 text-muted-foreground">
                 Prototype: choose who to sign in as.
               </p>
-              <PersonaSignIn />
+              <PersonaSignIn next={returnPath} />
             </>
           ) : (
             <p className="mt-2 text-muted-foreground">
