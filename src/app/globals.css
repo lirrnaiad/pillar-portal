@@ -163,13 +163,30 @@
 }
 
 @layer base {
+  /* The focus color is full-strength navy (EXPERIENCE.md › Accessibility
+     Floor): at least 3:1 on the canvas and on white. Never gold. */
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   body {
     @apply bg-background text-foreground;
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* prefers-reduced-motion: no slide, zoom or card lift (EXPERIENCE.md ›
+   Accessibility Floor). Durations drop to 0.01ms rather than 0s or removing
+   the animations: each still jumps to its end state and reliably fires
+   animationend, which Radix menus wait for before they unmount. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -17,6 +17,14 @@
 
 begin;
 
+-- `supabase test db --linked` connects as the CLI's login role
+-- (`cli_login_postgres`), which can't use the `extensions` schema where pgTAP
+-- lives and has the default "$user", public search_path. Run as `postgres`,
+-- as locally, with `extensions` on the path, rather than rely on how the
+-- session was opened.
+set local role postgres;
+set local search_path = "$user", public, extensions;
+
 -- The tables in the `supabase_realtime` publication, as `schema.table`
 -- (AD-14). Empty until the tasks slice publishes its tables.
 \set expected_realtime_tables '{}'

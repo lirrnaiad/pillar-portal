@@ -17,17 +17,35 @@ pnpm dev
 ```
 
 The app runs at http://localhost:3000, and `GET /api/health` returns
-`{"status":"ok","timestamp":"..."}`.
+`{"status":"ok","timestamp":"..."}`. `/login` offers the prototype personas,
+and `/dashboard` is the member area.
 
-Three variables are required, and `.env.example` holds working local values.
-`next dev`, `next build` and `next start` stop with the variable named when one
-is missing or malformed:
+`.env.example` holds working local values. `next dev`, `next build` and
+`next start` stop with the variable named when a `NEXT_PUBLIC_*` value is
+missing or malformed, and the server refuses to start when a server-only one
+is:
 
 | Variable | Value |
 |---|---|
 | `NEXT_PUBLIC_SITE_URL` | The site's http(s) URL |
 | `NEXT_PUBLIC_SUPABASE_URL` | The Supabase API URL: `http://127.0.0.1:54321` locally |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | A publishable key (`sb_publishable_...`); a secret key or a legacy JWT key is refused. `.env.example` holds the local stack's fixed demo key |
+| `PROTOTYPE_PERSONAS` | Server-only, optional. `true` turns on persona sign-in; unset or `false` leaves it off. It may be `true` only when `NEXT_PUBLIC_SUPABASE_URL` is the local stack (`localhost` or `127.0.0.1`) or the staging project |
+| `PROTOTYPE_PERSONA_PASSWORD` | Server-only, at least 16 characters; required when personas are on. Locally it must match `supabase/seed.sql` (`.env.example` has the value); staging's is generated and set on Vercel |
+
+### Prototype personas
+
+While `PROTOTYPE_PERSONAS=true`, `/login` shows three buttons: **Staff Layout
+Artist**, **Head Layout Artist** and **Editor-in-Chief**. Each signs in as a
+shared Supabase Auth user (`src/features/members/personas.ts`) with the
+password only the server holds, under the same RLS as any member. Sign out
+ends only that browser's session, so others using the same persona stay
+signed in. Self sign-up is off in `supabase/config.toml`, so every account is
+a persona or a seeded member.
+
+Staging is public by design: anyone who opens the staging URL can sign in as
+any persona, including the Editor-in-Chief. So staging holds synthetic data
+only, and real member data never goes there.
 
 ### Local Supabase
 
@@ -56,6 +74,15 @@ turns off Supabase's default grants to `anon` and `authenticated`, so every
 object a later migration adds starts with no API access and gets only the
 grants it names.
 
+`supabase db reset` applies the migrations, then `supabase/seed.sql`: the
+three personas (with the local persona password) and 14 synthetic members
+with no password, covering every desk and every approver path. It creates
+auth users only; a trigger turns each into a pending member, and the seed
+then sets names and positions, which set the role. Running it again changes
+nothing. `members.role` always follows the positions held: none is
+`pending`, only Staff positions is `staff`, any Board position is
+`editorial_admin`.
+
 ### Schema to hosted Supabase
 
 The schema changes only through `supabase/migrations`, never by dashboard
@@ -70,7 +97,32 @@ pnpm exec supabase db push
 
 Staging's `NEXT_PUBLIC_SUPABASE_URL` and
 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set on the Vercel project, not in
-this repository.
+this repository, as are `PROTOTYPE_PERSONAS` and `PROTOTYPE_PERSONA_PASSWORD`.
+
+Auth settings live in `supabase/config.toml` (`[auth]`, with the staging
+Site URL and redirect in `[remotes.staging]`). Check what would change with
+`pnpm exec supabase config diff` before `pnpm exec supabase config push`.
+
+### Staging personas
+
+Migrations never create personas. After `db push`, create or update them on
+staging with:
+
+```bash
+node scripts/staging-personas.mjs
+```
+
+It reads `.env.staging.local` (git-ignored, mode 0600) holding
+`STAGING_SUPABASE_URL`, `STAGING_SUPABASE_SECRET_KEY` (an `sb_secret_` key)
+and `PROTOTYPE_PERSONA_PASSWORD` (the value also set on Vercel, never the
+local one). Before any network or CLI call it refuses unless all three are
+valid, none is already set in the shell, and the CLI is linked to staging.
+It then checks the migrations are there ("run db push first"), creates or
+updates each persona through the Auth admin API, and runs
+`supabase/seed.sql` on the linked project for the synthetic members, which
+skips the personas. Last, it exits 1 if any staging user has the committed
+local persona password. The Supabase CLI it spawns never sees the key or the
+password. It prints counts only, and running it again changes nothing.
 
 ## Checks
 
@@ -82,9 +134,9 @@ failing step blocks the merge:
 | `pnpm lint` | ESLint, including the architecture rules: only `src/lib/env.server.ts` and `src/lib/env.client.ts` use `process`; no `getSession` anywhere under `src/` (server code gets the caller from `supabase.auth.getClaims()`); no import cycles; slices under `src/features/` are imported only through their `index.ts`; `members`, `files` and `email` import no other slice, and `tasks`, `reports` and `recruitment` may import only `members`, `files` and `email`; nothing outside `src/app` imports `src/app`; only `src/lib/utils.ts` imports the `cn` package (everything else uses `cn` from `@/lib/utils`) |
 | `pnpm typecheck` | `next typegen`, then `tsc --noEmit` |
 | `pnpm check:hex` | No hex color in any file under `src/` except `src/app/globals.css`, which holds the design tokens |
-| `pnpm test` | Vitest: unit tests, plus tests that run the lint config and the two check scripts against temp-dir fixture projects |
+| `pnpm test` | Vitest: unit tests, component tests in jsdom with an axe accessibility check, plus tests that run the lint config and the two check scripts against temp-dir fixture projects |
 | `pnpm exec supabase db start`, then `pnpm exec supabase db reset` | The migrations apply cleanly to a fresh database |
-| `pnpm exec supabase test db` | pgTAP, including the catalog test in `supabase/tests/00_security/` (see below) |
+| `pnpm exec supabase test db` | pgTAP: the catalog test in `supabase/tests/00_security/` (see below), the org reference data in `supabase/tests/core/` (the rows, and that re-running the data migration restores them), and members in `supabase/tests/members/` (the new-user trigger, role derivation, constraints, and a table-driven caller matrix of helper results and RLS visibility) |
 | `pnpm db:types && git diff --exit-code -- src/lib/supabase/database.types.ts` | The committed types match the schema. Run `pnpm db:types` after any schema change and commit the result; Prettier leaves the file alone |
 | `pnpm build` | Production build |
 | `pnpm check:bundle` | Browser-facing build output (`.next/static`, and prerendered `.html`, `.rsc` and `.body` files) contains no Supabase secret key and no server-only env value of 8+ characters; run after `pnpm build`. Unset server-only variables are listed as not scanned, and under `CI=true` they fail the check (every server-only variable needs a canary value in CI) |
@@ -152,12 +204,18 @@ Two lists change with the schema, in the same commit as the migration:
 
 ## Layout
 
-- `src/app/` routes, including `api/health`
+- `src/app/` routes: `(auth)/login`, the `(member)` layout and `dashboard`,
+  and `api/health`
+- `src/features/members/` the members slice: personas, the sign-in and
+  sign-out actions, `getCurrentMember()`, the persona buttons and the avatar
+  menu
+- `src/components/app-header.tsx` the navy header with the logo and wordmark
 - `src/lib/` shared code, including the two env modules and the security
   headers
 - `src/lib/supabase/` the server client (`server.ts`), the browser client
   (`client.ts`) and the generated `database.types.ts`
 - `src/components/ui/` shadcn components
 - `src/instrumentation.ts` validates the env modules when the server starts
-- `supabase/` the CLI config, migrations and pgTAP tests
-- `scripts/` the `check:hex` and `check:bundle` scripts
+- `supabase/` the CLI config, migrations, `seed.sql` and pgTAP tests
+- `scripts/` the `check:hex` and `check:bundle` scripts, and
+  `staging-personas.mjs`
