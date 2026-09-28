@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { getCurrentMember, MemberShell, redirect, RedirectError } = vi.hoisted(
+const { getCurrentMember, AdminShell, redirect, RedirectError } = vi.hoisted(
   () => {
     // Like Next's redirect(), the mock throws, so nothing after it runs.
     class RedirectError extends Error {
@@ -12,7 +12,7 @@ const { getCurrentMember, MemberShell, redirect, RedirectError } = vi.hoisted(
     }
     return {
       getCurrentMember: vi.fn(),
-      MemberShell: vi.fn(() => null),
+      AdminShell: vi.fn(() => null),
       redirect: vi.fn((url: string) => {
         throw new RedirectError(url)
       }),
@@ -22,16 +22,16 @@ const { getCurrentMember, MemberShell, redirect, RedirectError } = vi.hoisted(
 )
 
 vi.mock("@/features/members", () => ({ getCurrentMember }))
-vi.mock("./member-shell", () => ({ MemberShell }))
+vi.mock("./admin-shell", () => ({ AdminShell }))
 vi.mock("next/navigation", () => ({ redirect }))
 
 import type { CurrentMember } from "@/features/members"
 
-import MemberLayout from "./layout"
+import AdminLayout from "./layout"
 
 const MEMBER = {
   id: "00000000-0000-4000-8000-000000000001",
-  name: "Head Layout Artist",
+  name: "Editor-in-Chief",
   role: "editorial_admin",
 } satisfies CurrentMember
 
@@ -39,33 +39,35 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe("MemberLayout", () => {
+describe("AdminLayout", () => {
   it.each([
     ["signed out (no member)", null],
     ["pending", { ...MEMBER, role: "pending" as const }],
   ])("sends a %s caller to /login", async (_label, member) => {
     getCurrentMember.mockResolvedValue(member)
 
-    await expect(MemberLayout({ children: null })).rejects.toEqual(
+    await expect(AdminLayout({ children: null })).rejects.toEqual(
       new RedirectError("/login")
     )
     expect(redirect).toHaveBeenCalledWith("/login")
   })
 
-  it.each(["staff", "editorial_admin"] as const)(
-    "renders the member shell for an active %s member, with the notice-toast reader mounted before the page",
-    async (role) => {
-      const member = { ...MEMBER, role }
-      getCurrentMember.mockResolvedValue(member)
+  it("sends an active staff member to /dashboard with the admin-restricted notice", async () => {
+    getCurrentMember.mockResolvedValue({ ...MEMBER, role: "staff" as const })
 
-      const element = await MemberLayout({ children: "page" })
+    await expect(AdminLayout({ children: null })).rejects.toEqual(
+      new RedirectError("/dashboard?notice=admin-restricted")
+    )
+    expect(redirect).toHaveBeenCalledWith("/dashboard?notice=admin-restricted")
+  })
 
-      expect(redirect).not.toHaveBeenCalled()
-      expect(element.type).toBe(MemberShell)
-      expect(element.props.member).toEqual(member)
-      const children = element.props.children as unknown[]
-      expect(children[children.length - 1]).toBe("page")
-      expect(children.length).toBeGreaterThan(1)
-    }
-  )
+  it("renders the admin shell for an active editorial_admin member", async () => {
+    getCurrentMember.mockResolvedValue(MEMBER)
+
+    const element = await AdminLayout({ children: "page" })
+
+    expect(redirect).not.toHaveBeenCalled()
+    expect(element.type).toBe(AdminShell)
+    expect(element.props).toEqual({ member: MEMBER, children: "page" })
+  })
 })

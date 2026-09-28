@@ -20,3 +20,6 @@ authenticated private.current_member_id()
 authenticated private.is_active_member()
 authenticated private.is_admin()
 authenticated private.is_top_editor()
+
+# tasks_tasks: the only way tasks, task_assignments and activity are written
+authenticated public.create_task(text, text, text, text, timestamp with time zone, text, jsonb)
