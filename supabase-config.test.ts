@@ -65,6 +65,22 @@ describe("supabase/config.toml auth settings", () => {
     expect(config.get("auth.minimum_password_length")).toBe("16")
   })
 
+  it("never times sessions out, so a link opened days later still opens signed in (NFR8)", () => {
+    // No forced sign-out after a fixed time or after inactivity, locally or
+    // on any remote: no `[auth.sessions]` (timebox, inactivity_timeout) or
+    // `[remotes.<name>.auth.sessions]` values at all. Shared computers get
+    // their own sessions in Epic 5.
+    expect(
+      [...config.keys()].filter((key) => key.includes("sessions."))
+    ).toEqual([])
+    // Each refresh hands out a new refresh token and retires the old one.
+    expect(config.get("auth.enable_refresh_token_rotation")).toBe("true")
+    // /login isn't proxied, so a refresh done while it renders can't save the
+    // new cookies. Its redirect to a proxied path refreshes again with the
+    // same refresh token, which Auth accepts only within this window (s).
+    expect(config.get("auth.refresh_token_reuse_interval")).toBe("10")
+  })
+
   it("gives the shared server IP room for a demo audience's persona sign-ins", () => {
     // Every persona sign-in comes from the app server, so all visitors share
     // one per-IP budget.

@@ -43,6 +43,10 @@ const { auth, cookieStore, createClient, redirect, RedirectError } = vi.hoisted(
 vi.mock("@/lib/supabase/server", () => ({ createClient }))
 vi.mock("next/navigation", () => ({ redirect }))
 vi.mock("next/headers", () => ({ cookies: async () => cookieStore }))
+// safeReturnPath checks `next` against the site's origin.
+vi.mock("@/lib/env.client", () => ({
+  clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
+}))
 
 const PASSWORD = "a-persona-password-for-tests"
 
@@ -85,6 +89,48 @@ describe("signInAsPersonaAction", () => {
       password: PASSWORD,
     })
     expect(redirect).toHaveBeenCalledExactlyOnceWith("/dashboard")
+  })
+
+  it("goes to the form's next after signing in", async () => {
+    const { signInAsPersonaAction } = await loadActions({ personas: "true" })
+
+    await expect(
+      signInAsPersonaAction(
+        null,
+        form({ persona: "staff_layout_artist", next: "/dashboard?view=board" })
+      )
+    ).rejects.toEqual(new RedirectError("/dashboard?view=board"))
+
+    expect(auth.signInWithPassword).toHaveBeenCalledOnce()
+    expect(redirect).toHaveBeenCalledExactlyOnceWith("/dashboard?view=board")
+  })
+
+  it.each(["https://evil.example/", "//evil.example", "/.//evil.example", ""])(
+    "goes to /dashboard instead of the hostile next %j",
+    async (next) => {
+      const { signInAsPersonaAction } = await loadActions({ personas: "true" })
+
+      await expect(
+        signInAsPersonaAction(null, form({ persona: "editor_in_chief", next }))
+      ).rejects.toEqual(new RedirectError("/dashboard"))
+      expect(redirect).toHaveBeenCalledExactlyOnceWith("/dashboard")
+    }
+  )
+
+  it("doesn't use next when sign-in fails", async () => {
+    auth.signInWithPassword.mockResolvedValue({
+      data: { user: null, session: null },
+      error: { name: "AuthApiError", message: "Invalid login credentials" },
+    })
+    const { signInAsPersonaAction } = await loadActions({ personas: "true" })
+
+    await expect(
+      signInAsPersonaAction(
+        null,
+        form({ persona: "staff_layout_artist", next: "/dashboard?view=board" })
+      )
+    ).resolves.toEqual({ ok: false, code: "auth.sign_in_failed" })
+    expect(redirect).not.toHaveBeenCalled()
   })
 
   it.each([undefined, "false"])(

@@ -20,6 +20,34 @@ The app runs at http://localhost:3000, and `GET /api/health` returns
 `{"status":"ok","timestamp":"..."}`. `/login` offers the prototype personas,
 and `/dashboard` is the member area.
 
+### Sessions and links
+
+`src/proxy.ts` runs before every request to `/dashboard`, `/admin` and the
+paths under them, and nowhere else (not `/api`, `/login`, `/auth`, `/_next`
+or metadata files). It refreshes the session, so a member stays signed in
+past the one-hour access token: the refreshed cookies go to the browser and
+to the page being rendered. A signed-out visitor asking for a page there is
+sent to `/login?next=<path and query>`, and after signing in lands on that
+page, so a task link shared in Messenger opens the task. Server Action POSTs
+are never redirected. The proxy only routes: the layouts, RLS and the
+database commands still decide what anyone can see or do.
+
+The redirect is built from `NEXT_PUBLIC_SITE_URL`, never from the request's
+host. Every `next` the app accepts goes through `safeReturnPath`
+(`src/features/members/return-path.ts`): it keeps a path on the site's own
+origin (never decoding it) and turns anything else, such as another host,
+`//x`, `/.//x` or `javascript:`, into `/dashboard`. An active member who
+opens `/login` goes straight to `next`; pending and rowless callers see the
+sign-in page.
+
+Sessions never time out on their own: the cookies keep `@supabase/ssr`'s
+defaults (400 days) and `supabase/config.toml` sets no `[auth.sessions]`
+limit, which `supabase-config.test.ts` checks. Two known limits: `/login`
+isn't proxied, so a refresh it triggers can't save cookies (the redirect to a
+proxied page refreshes again within the 10-second reuse window), and preview
+deploys send signed-out visitors to staging's `/login`, since their
+`NEXT_PUBLIC_SITE_URL` is staging's.
+
 `.env.example` holds working local values. `next dev`, `next build` and
 `next start` stop with the variable named when a `NEXT_PUBLIC_*` value is
 missing or malformed, and the server refuses to start when a server-only one
@@ -206,9 +234,11 @@ Two lists change with the schema, in the same commit as the migration:
 
 - `src/app/` routes: `(auth)/login`, the `(member)` layout and `dashboard`,
   and `api/health`
+- `src/proxy.ts` refreshes the session on `/dashboard` and `/admin` and sends
+  signed-out visitors to `/login?next=...`
 - `src/features/members/` the members slice: personas, the sign-in and
-  sign-out actions, `getCurrentMember()`, the persona buttons and the avatar
-  menu
+  sign-out actions, `getCurrentMember()`, `safeReturnPath`, the persona
+  buttons and the avatar menu
 - `src/components/app-header.tsx` the navy header with the logo and wordmark
 - `src/lib/` shared code, including the two env modules and the security
   headers

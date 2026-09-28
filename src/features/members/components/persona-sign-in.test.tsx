@@ -22,12 +22,14 @@ async function axeViolations(node: Element) {
   return results.violations
 }
 
+const NEXT = "/dashboard?view=board"
+
 function renderOnPage() {
   // The login page puts the form inside <main>, which axe's region rule
   // expects of all content.
   return render(
     <main>
-      <PersonaSignIn />
+      <PersonaSignIn next={NEXT} />
     </main>
   )
 }
@@ -65,6 +67,17 @@ describe("PersonaSignIn", () => {
     ])
   })
 
+  it("carries next in a hidden field of the same form", () => {
+    const { container } = renderOnPage()
+    const field = container.querySelector('input[name="next"]')
+
+    expect(field).toHaveAttribute("type", "hidden")
+    expect(field).toHaveValue(NEXT)
+    expect(field?.closest("form")).toBe(
+      screen.getAllByRole("button")[0].closest("form")
+    )
+  })
+
   it("sends the pressed persona and announces a failure in a polite live region", async () => {
     signInAsPersonaAction.mockResolvedValue({
       ok: false,
@@ -80,6 +93,7 @@ describe("PersonaSignIn", () => {
     expect(signInAsPersonaAction).toHaveBeenCalledOnce()
     const formData = signInAsPersonaAction.mock.calls[0][1] as FormData
     expect(formData.get("persona")).toBe("head_layout_artist")
+    expect(formData.get("next")).toBe(NEXT)
   })
 
   it("announces a second identical failure again: the message leaves the live region while pending", async () => {
@@ -105,5 +119,8 @@ describe("PersonaSignIn", () => {
     await act(async () => finishSecond(FAILED))
     await waitFor(() => expect(region).toHaveTextContent(MESSAGE))
     expect(signInAsPersonaAction).toHaveBeenCalledTimes(2)
+    // React resets the form after an action; next survives for the retry.
+    const retry = signInAsPersonaAction.mock.calls[1][1] as FormData
+    expect(retry.get("next")).toBe(NEXT)
   })
 })

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server"
 
 import type { MemberErrorCode } from "./errors"
 import { PERSONAS } from "./personas"
+import { safeReturnPath } from "./return-path"
 import { personaSignInSchema } from "./schemas"
 
 /** What the persona form shows after a failed attempt; success redirects. */
@@ -15,9 +16,10 @@ export type PersonaSignInState = { ok: false; code: MemberErrorCode } | null
 
 /**
  * Signs in as the persona whose button was pressed, with the password only
- * the server holds (AD-7), then goes to /dashboard. Refuses without calling
- * Auth unless PROTOTYPE_PERSONAS is on. A bad button value and any Auth
- * failure look the same to the visitor.
+ * the server holds (AD-7), then goes to the form's `next` when
+ * `safeReturnPath` accepts it, else /dashboard. Refuses without calling Auth
+ * unless PROTOTYPE_PERSONAS is on. A bad button value and any Auth failure
+ * look the same to the visitor.
  */
 export async function signInAsPersonaAction(
   _previous: PersonaSignInState,
@@ -47,7 +49,7 @@ export async function signInAsPersonaAction(
   if (!signedIn) return { ok: false, code: "auth.sign_in_failed" }
 
   // redirect() throws, so it stays outside the try.
-  redirect("/dashboard")
+  redirect(safeReturnPath(formData.get("next")))
 }
 
 /**
