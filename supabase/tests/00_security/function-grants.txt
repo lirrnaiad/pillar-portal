@@ -14,3 +14,9 @@
 # supabase/tests/00_security/catalog.test.sql compares this list with the
 # database and prints the extra and missing lines when they differ. Add or
 # change a line in the same change as the migration that grants it.
+
+# members_members: the helpers RLS policies call (AD-5)
+authenticated private.current_member_id()
+authenticated private.is_active_member()
+authenticated private.is_admin()
+authenticated private.is_top_editor()

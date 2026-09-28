@@ -9,7 +9,177 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      desks: {
+        Row: {
+          id: string
+          name: string
+          production_role: Database["public"]["Enums"]["production_role"]
+          sort_order: number
+        }
+        Insert: {
+          id: string
+          name: string
+          production_role: Database["public"]["Enums"]["production_role"]
+          sort_order: number
+        }
+        Update: {
+          id?: string
+          name?: string
+          production_role?: Database["public"]["Enums"]["production_role"]
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      member_positions: {
+        Row: {
+          is_primary: boolean
+          member_id: string
+          position: string
+        }
+        Insert: {
+          is_primary?: boolean
+          member_id: string
+          position: string
+        }
+        Update: {
+          is_primary?: boolean
+          member_id?: string
+          position?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_positions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_positions_position_fkey"
+            columns: ["position"]
+            isOneToOne: false
+            referencedRelation: "positions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      members: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string
+          id: string
+          name: string
+          role: Database["public"]["Enums"]["member_role"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email: string
+          id: string
+          name: string
+          role?: Database["public"]["Enums"]["member_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "members_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      positions: {
+        Row: {
+          desk_id: string | null
+          heads_desk_id: string | null
+          heads_section_id: string | null
+          id: string
+          is_board: boolean
+          is_top_editor: boolean
+          report_title: string
+          sort_order: number
+          title: string
+        }
+        Insert: {
+          desk_id?: string | null
+          heads_desk_id?: string | null
+          heads_section_id?: string | null
+          id: string
+          is_board?: boolean
+          is_top_editor?: boolean
+          report_title: string
+          sort_order: number
+          title: string
+        }
+        Update: {
+          desk_id?: string | null
+          heads_desk_id?: string | null
+          heads_section_id?: string | null
+          id?: string
+          is_board?: boolean
+          is_top_editor?: boolean
+          report_title?: string
+          sort_order?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "positions_desk_id_fkey"
+            columns: ["desk_id"]
+            isOneToOne: false
+            referencedRelation: "desks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "positions_heads_desk_id_fkey"
+            columns: ["heads_desk_id"]
+            isOneToOne: false
+            referencedRelation: "desks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "positions_heads_section_id_fkey"
+            columns: ["heads_section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sections: {
+        Row: {
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          id: string
+          name: string
+          sort_order: number
+        }
+        Update: {
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -18,7 +188,14 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      member_role: "pending" | "staff" | "editorial_admin"
+      production_role:
+        | "writer"
+        | "layout_artist"
+        | "cartoonist"
+        | "photojournalist"
+        | "broadcast_journalist"
+        | "videojournalist"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -145,7 +322,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      member_role: ["pending", "staff", "editorial_admin"],
+      production_role: [
+        "writer",
+        "layout_artist",
+        "cartoonist",
+        "photojournalist",
+        "broadcast_journalist",
+        "videojournalist",
+      ],
+    },
   },
 } as const
 

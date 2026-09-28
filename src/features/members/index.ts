@@ -1,0 +1,15 @@
+// The members slice's public surface (AD-2): code outside the slice imports
+// from here only.
+export { signInAsPersonaAction, signOutAction } from "./actions"
+export type { PersonaSignInState } from "./actions"
+export { MemberMenu } from "./components/member-menu"
+export { PersonaSignIn } from "./components/persona-sign-in"
+export { MEMBER_ERROR_COPY, memberErrorMessage } from "./errors"
+export type { MemberErrorCode } from "./errors"
+export { PERSONAS } from "./personas"
+export type { PersonaKey } from "./personas"
+export { PRODUCTION_ROLE_LABELS } from "./production-roles"
+export type { ProductionRole } from "./production-roles"
+export { getCurrentMember } from "./queries"
+export type { CurrentMember, MemberRole } from "./queries"
+export { personaSignInSchema } from "./schemas"

@@ -29,7 +29,7 @@ export async function createClient() {
         },
         // The no-store headers passed as the second argument can't be set
         // through next/headers. Session refreshes belong in src/proxy.ts
-        // (Story 1.3), which owns the response and sets both.
+        // (Story 1.4), which owns the response and sets both.
         setAll(cookiesToSet) {
           try {
             for (const { name, value, options } of cookiesToSet) {

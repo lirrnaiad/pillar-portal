@@ -29,6 +29,11 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
       NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
+      # Server-only. Personas are on (the Supabase URL above is local), and the
+      # password is a canary: check:bundle fails if it reaches the browser
+      # bundle, and fails under CI=true if either variable is unset.
+      PROTOTYPE_PERSONAS: "true"
+      PROTOTYPE_PERSONA_PASSWORD: ci-canary-persona-password
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,7 +58,7 @@ jobs:
       - name: No hex colors outside globals.css
         run: pnpm check:hex
 
-      - name: Unit tests
+      - name: Unit and component tests (including axe)
         run: pnpm test
 
       # The database only (no Auth, API or Storage containers), which is all
@@ -61,10 +66,10 @@ jobs:
       - name: Start local database
         run: pnpm exec supabase db start
 
-      - name: Apply migrations from scratch
+      - name: Apply migrations from scratch, then seed.sql
         run: pnpm exec supabase db reset
 
-      - name: pgTAP (catalog test)
+      - name: pgTAP (catalog, org reference and members)
         run: pnpm exec supabase test db
 
       - name: Generated types match the schema

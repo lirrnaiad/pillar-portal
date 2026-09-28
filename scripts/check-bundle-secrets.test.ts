@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import { type Fixture, makeFixture, runScript } from "./test-fixture"
 
-// The real serverEnvSchema is empty until Story 1.2, so each fixture brings
-// its own src/lib/env.server.ts. The scan reads only `serverEnvSchema.shape`.
+// Each fixture brings its own src/lib/env.server.ts, so these tests don't
+// depend on the real server variables or their validation. The scan reads
+// only `serverEnvSchema.shape`.
 const FIXTURE_ENV_SERVER = `export const serverEnvSchema = {
   shape: { PILLAR_TEST_SECRET: {}, PILLAR_TEST_FLAG: {} },
 }
