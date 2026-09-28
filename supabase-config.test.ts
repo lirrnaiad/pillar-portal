@@ -71,3 +71,22 @@ describe("supabase/config.toml auth settings", () => {
     expect(config.get("auth.rate_limit.sign_in_sign_ups")).toBe("300")
   })
 })
+
+// `supabase config push` sends every declared value, so these stay equal to
+// what the hosted staging project already has; a push then changes only the
+// Auth and API settings above.
+describe("supabase/config.toml values kept equal to hosted staging", () => {
+  const config = readConfig()
+
+  it.each([
+    ["db.pooler.default_pool_size", "15"],
+    ["db.pooler.max_client_conn", "200"],
+    ["auth.email.enable_confirmations", "true"],
+    ["auth.email.max_frequency", '"1m"'],
+    ["auth.email.otp_length", "8"],
+    ["auth.mfa.totp.enroll_enabled", "true"],
+    ["auth.mfa.totp.verify_enabled", "true"],
+  ])("%s = %s", (key, value) => {
+    expect(config.get(key)).toBe(value)
+  })
+})
