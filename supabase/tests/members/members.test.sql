@@ -11,6 +11,14 @@
 
 begin;
 
+-- `supabase test db --linked` connects as the CLI's login role
+-- (`cli_login_postgres`), which can't use the `extensions` schema where pgTAP
+-- lives and has the default "$user", public search_path. Run as `postgres`,
+-- as locally, with `extensions` on the path, rather than rely on how the
+-- session was opened.
+set local role postgres;
+set local search_path = "$user", public, extensions;
+
 select plan(35);
 
 -- Fixtures.
@@ -494,7 +502,7 @@ begin
     exception when insufficient_privilege then null;
     end;
 
-    reset role;
+    set local role postgres;
     insert into observed select o.*;
   end loop;
 end

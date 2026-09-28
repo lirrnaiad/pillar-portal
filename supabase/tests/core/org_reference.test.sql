@@ -8,6 +8,14 @@
 
 begin;
 
+-- `supabase test db --linked` connects as the CLI's login role
+-- (`cli_login_postgres`), which can't use the `extensions` schema where pgTAP
+-- lives and has the default "$user", public search_path. Run as `postgres`,
+-- as locally, with `extensions` on the path, rather than rely on how the
+-- session was opened.
+set local role postgres;
+set local search_path = "$user", public, extensions;
+
 select plan(24);
 
 -- Counts.
@@ -196,7 +204,7 @@ declare
   v_statement text;
   v_found boolean := false;
 begin
-  reset role;
+  set local role postgres;
   for i in 1..2 loop
     for v_statement in
       select unnest(m.statements)
