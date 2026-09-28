@@ -1,5 +1,7 @@
 "use client"
 
+import Link from "next/link"
+
 import { HEADER_FOCUS } from "@/components/app-header"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -15,12 +17,22 @@ import { cn } from "@/lib/utils"
 import { signOutAction } from "../actions"
 import { initialsOf } from "../initials"
 
+export type MemberMenuExtraLink = { label: string; href: string }
+
 /**
- * The avatar menu in the app header (UX-DR10): the member's name, then Sign
- * out. The trigger is a 44px target around a 32px avatar, named for screen
- * readers as "<name>, account".
+ * The avatar menu in the app header (UX-DR10): the member's name, any
+ * `extraLinks` (such as "Admin" for an editorial_admin, or "My dashboard" in
+ * the admin shell — the caller decides, this component stays presentation
+ * only), then Sign out. The trigger is a 44px target around a 32px avatar,
+ * named for screen readers as "<name>, account".
  */
-export function MemberMenu({ name }: { name: string }) {
+export function MemberMenu({
+  name,
+  extraLinks = [],
+}: {
+  name: string
+  extraLinks?: MemberMenuExtraLink[]
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -41,6 +53,13 @@ export function MemberMenu({ name }: { name: string }) {
           {name}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {extraLinks.map((link) => (
+          <DropdownMenuItem key={link.href} asChild>
+            <Link href={link.href} className="min-h-11 w-full">
+              {link.label}
+            </Link>
+          </DropdownMenuItem>
+        ))}
         <form action={signOutAction}>
           {/* Keep the menu open on select: closing it would unmount this
               form before the browser submits it. The redirect to /login

@@ -18,9 +18,13 @@ export const HEADER_FOCUS =
  */
 export function AppHeader({
   homeHref,
+  className,
   children,
 }: {
   homeHref?: string
+  /** Merged onto the inner content div, so a wider shell (admin routes go up
+   * to 1440px, DESIGN.md) can override the default 640px `max-w-160`. */
+  className?: string
   children?: React.ReactNode
 }) {
   const brand = (
@@ -38,7 +42,12 @@ export function AppHeader({
 
   return (
     <header className="border-b-3 border-brand-gold bg-navy text-white">
-      <div className="mx-auto flex min-h-14 w-full max-w-160 items-center justify-between gap-4 px-page-margin-mobile md:px-page-margin-desktop">
+      <div
+        className={cn(
+          "mx-auto flex min-h-14 w-full max-w-160 items-center justify-between gap-4 px-page-margin-mobile md:px-page-margin-desktop",
+          className
+        )}
+      >
         {homeHref ? (
           <Link
             href={homeHref}

@@ -36,9 +36,9 @@ async function axeViolations(node: Element) {
   return results.violations
 }
 
-function renderShell() {
+function renderShell(role: "staff" | "editorial_admin" = "staff") {
   return render(
-    <MemberShell member={{ name: "Head Layout Artist" }}>
+    <MemberShell member={{ name: "Head Layout Artist", role }}>
       <h1>What&apos;s mine</h1>
     </MemberShell>
   )
@@ -95,6 +95,37 @@ describe("MemberShell", () => {
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
+  })
+
+  it("offers Admin to an editorial_admin member, above Sign out", async () => {
+    const user = userEvent.setup()
+    renderShell("editorial_admin")
+
+    await user.click(
+      screen.getByRole("button", { name: "Head Layout Artist, account" })
+    )
+    const menu = await screen.findByRole("menu")
+    const items = within(menu)
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent)
+
+    expect(items).toEqual(["Admin", "Sign out"])
+    expect(within(menu).getByRole("menuitem", { name: "Admin" })).toHaveAttribute(
+      "href",
+      "/admin"
+    )
+  })
+
+  it("offers no Admin link to a staff member", async () => {
+    const user = userEvent.setup()
+    renderShell("staff")
+
+    await user.click(
+      screen.getByRole("button", { name: "Head Layout Artist, account" })
+    )
+    const menu = await screen.findByRole("menu")
+
+    expect(within(menu).queryByRole("menuitem", { name: "Admin" })).toBeNull()
   })
 
   it("submits the sign-out form when Sign out is clicked", async () => {

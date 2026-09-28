@@ -33,7 +33,7 @@ set local search_path = "$user", public, extensions;
 -- make check 6 expect no grants at all; the first assertion catches that.
 \set grants_txt `cat 00_security/function-grants.txt`
 
-select plan(26);
+select plan(28);
 
 -- The file's entries: comments and blank lines dropped, each run of
 -- whitespace collapsed to one space.
@@ -332,6 +332,23 @@ select hasnt_extension(
   'pg_graphql is not installed (core_security_baseline drops it)'
 );
 
+-- Positive/negative controls for the tasks slice's new objects
+-- (tasks_tasks): these assert against the real, migrated objects rather than
+-- self-test fixtures, since they already exist by the time this file runs.
+
+select ok(
+  'authenticated public.create_task(text, text, text, text, timestamp with time zone, text, jsonb)'
+    in (select * from pg_temp.function_grants()),
+  'positive control: create_task''s EXECUTE grant to authenticated is present'
+);
+
+select is_empty(
+  $$ select * from pg_temp.authenticated_excess() p
+     where p in ('table public.activity', 'table public.tasks',
+                 'table public.task_assignments') $$,
+  'negative control: authenticated holds only SELECT on activity, tasks and task_assignments'
+);
+
 -- Self-test, part 1: objects created in `public` without grants give the API
 -- roles nothing (the baseline's default privileges). The identity column
 -- adds an owned sequence.
@@ -489,7 +506,9 @@ select set_has(
 create function public.catalog_selftest_definer_ok()
   returns integer language sql security definer set search_path = ''
   as 'select 1';
-create view public.member_directory as select 1 as x;
+-- public.member_directory is now a real, migrated view (tasks_tasks's
+-- predecessor, members_directory) that already isn't security_invoker, so
+-- the exception is exercised by production data rather than a fixture here.
 
 select set_hasnt(
   $$ select * from pg_temp.definers_without_empty_search_path() $$,

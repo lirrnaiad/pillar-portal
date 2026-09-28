@@ -9,6 +9,51 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      activity: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          op_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          op_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          op_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "member_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       desks: {
         Row: {
           id: string
@@ -47,6 +92,13 @@ export type Database = {
           position?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "member_positions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "member_directory"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "member_positions_member_id_fkey"
             columns: ["member_id"]
@@ -95,6 +147,13 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "members_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "member_directory"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "members_updated_by_fkey"
             columns: ["updated_by"]
@@ -180,12 +239,154 @@ export type Database = {
         }
         Relationships: []
       }
+      task_assignments: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          role: Database["public"]["Enums"]["production_role"]
+          state: Database["public"]["Enums"]["slot_state"]
+          task_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          role: Database["public"]["Enums"]["production_role"]
+          state?: Database["public"]["Enums"]["slot_state"]
+          task_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          role?: Database["public"]["Enums"]["production_role"]
+          state?: Database["public"]["Enums"]["slot_state"]
+          task_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_assignments_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "member_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_assignments_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_assignments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          column: Database["public"]["Enums"]["task_column"]
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_at: string
+          id: string
+          owning_desk_id: string | null
+          owning_section_id: string | null
+          reference_url: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          column?: Database["public"]["Enums"]["task_column"]
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_at: string
+          id?: string
+          owning_desk_id?: string | null
+          owning_section_id?: string | null
+          reference_url?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          column?: Database["public"]["Enums"]["task_column"]
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_at?: string
+          id?: string
+          owning_desk_id?: string | null
+          owning_section_id?: string | null
+          reference_url?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "member_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_owning_desk_id_fkey"
+            columns: ["owning_desk_id"]
+            isOneToOne: false
+            referencedRelation: "desks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_owning_section_id_fkey"
+            columns: ["owning_section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
-      [_ in never]: never
+      member_directory: {
+        Row: {
+          avatar_url: string | null
+          id: string | null
+          name: string | null
+          positions: Json | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      create_task: {
+        Args: {
+          description: string
+          due_at: string
+          owning_desk_id: string
+          owning_section_id: string
+          reference_url: string
+          slots: Json
+          title: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       member_role: "pending" | "staff" | "editorial_admin"
@@ -196,6 +397,8 @@ export type Database = {
         | "photojournalist"
         | "broadcast_journalist"
         | "videojournalist"
+      slot_state: "awaiting_response" | "on_it" | "needs_reassignment"
+      task_column: "to_do" | "doing" | "for_review" | "done"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -332,6 +535,8 @@ export const Constants = {
         "broadcast_journalist",
         "videojournalist",
       ],
+      slot_state: ["awaiting_response", "on_it", "needs_reassignment"],
+      task_column: ["to_do", "doing", "for_review", "done"],
     },
   },
 } as const

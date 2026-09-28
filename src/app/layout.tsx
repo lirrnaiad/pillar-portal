@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import { Toaster } from "sonner"
 
 import "./globals.css"
 import { cn } from "@/lib/utils"
@@ -28,7 +29,10 @@ export default function RootLayout({
       lang="en"
       className={cn("antialiased", fontSans.variable, fontMono.variable)}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        <Toaster />
+      </body>
     </html>
   )
 }

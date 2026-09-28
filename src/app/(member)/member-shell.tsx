@@ -9,13 +9,20 @@ export function MemberShell({
   member,
   children,
 }: {
-  member: Pick<CurrentMember, "name">
+  member: Pick<CurrentMember, "name" | "role">
   children: React.ReactNode
 }) {
   return (
     <>
       <AppHeader homeHref="/dashboard">
-        <MemberMenu name={member.name} />
+        <MemberMenu
+          name={member.name}
+          extraLinks={
+            member.role === "editorial_admin"
+              ? [{ label: "Admin", href: "/admin" }]
+              : []
+          }
+        />
       </AppHeader>
       <main className="mx-auto w-full max-w-160 px-page-margin-mobile py-8 md:px-page-margin-desktop">
         {children}
