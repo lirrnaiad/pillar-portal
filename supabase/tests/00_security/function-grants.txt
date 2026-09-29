@@ -23,3 +23,13 @@ authenticated private.is_top_editor()
 
 # tasks_tasks: the only way tasks, task_assignments and activity are written
 authenticated public.create_task(text, text, text, text, timestamp with time zone, text, jsonb)
+
+# tasks_responses_and_moves: the transition helpers (called from RLS and from
+# task_capabilities, which runs with the caller's rights), the two commands,
+# and the one source of offered actions
+authenticated private.is_task_approver(uuid)
+authenticated private.can_respond_to_slot(uuid)
+authenticated private.can_move_task(uuid, task_column)
+authenticated public.respond_to_slot(uuid, slot_state, text)
+authenticated public.move_task(uuid, task_column)
+authenticated public.task_capabilities(uuid[])

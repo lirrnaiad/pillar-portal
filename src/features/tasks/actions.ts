@@ -7,20 +7,36 @@ import type { Database } from "@/lib/supabase/database.types"
 import { phtInputToUtc } from "@/lib/time"
 
 import type { TaskErrorCode } from "./errors"
-import { taskCreateSchema } from "./schemas"
+import { slotRespondSchema, taskCreateSchema, taskMoveSchema } from "./schemas"
+import type { SlotState, TaskColumn } from "./status"
 
-export type CreateTaskState =
-  | { ok: true; data: { id: string } }
-  | { ok: false; code: TaskErrorCode; params?: Record<string, unknown> }
+// AD-3's result shape, shared by every action in the slice.
+type ActionError = { ok: false; code: TaskErrorCode; params?: Record<string, unknown> }
 
-// create_task raises these two as `raise exception ... message = '<code>'`;
-// tasks.no_slots and tasks.invalid_slot_member are backstops the UI never
-// reaches (src/features/tasks/errors.ts), so any other message — a raw
-// database error, a network failure — maps to the generic code instead of
-// leaking a raw error to the UI.
-const KNOWN_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
+export type CreateTaskState = { ok: true; data: { id: string } } | ActionError
+
+export type RespondToSlotState =
+  | { ok: true; data: { state: SlotState } }
+  | ActionError
+
+export type MoveTaskState =
+  | { ok: true; data: { column: TaskColumn } }
+  | ActionError
+
+// The codes each command raises as `raise exception ... message = '<code>'`
+// and the UI has copy for. Any other message — a code the UI never expects
+// (create_task's tasks.no_slots and tasks.invalid_slot_member backstops), a
+// raw database error, a network failure — maps to that action's generic code
+// instead of leaking a raw error to the UI.
+const CREATE_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
   "auth.not_active",
   "tasks.not_admin",
+])
+
+const COMMAND_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
+  "auth.not_active",
+  "tasks.not_found",
+  "tasks.not_allowed",
 ])
 
 // task_assignments' own unique(task_id, member_id, role) constraint, not a
@@ -28,11 +44,13 @@ const KNOWN_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
 // refine still gets a specific, actionable error instead of the generic one.
 const UNIQUE_VIOLATION = "23505"
 
-function mapError(error: { code?: string; message: string }): TaskErrorCode {
-  if (error.code === UNIQUE_VIOLATION) return "tasks.duplicate_slot"
-  return KNOWN_ERROR_CODES.has(error.message as TaskErrorCode)
-    ? (error.message as TaskErrorCode)
-    : "tasks.create_failed"
+function mapError(
+  error: { message: string },
+  known: ReadonlySet<TaskErrorCode>,
+  fallback: TaskErrorCode
+): TaskErrorCode {
+  const code = error.message as TaskErrorCode
+  return known.has(code) ? code : fallback
 }
 
 /**
@@ -77,9 +95,76 @@ export async function createTaskAction(input: unknown): Promise<CreateTaskState>
   const { data, error } = await supabase.rpc("create_task", args)
 
   if (error) {
-    return { ok: false, code: mapError(error) }
+    return {
+      ok: false,
+      code:
+        error.code === UNIQUE_VIOLATION
+          ? "tasks.duplicate_slot"
+          : mapError(error, CREATE_ERROR_CODES, "tasks.create_failed"),
+    }
   }
 
   revalidatePath("/admin/tasks")
   return { ok: true, data: { id: data } }
+}
+
+/**
+ * Answers the caller's own awaiting slot (AD-3, AD-4): I'm on it, or Can't
+ * take this with an optional reason. respond_to_slot decides whether the
+ * caller may; this only parses, calls it, maps the error and revalidates.
+ * The reason is sent only with `needs_reassignment`.
+ */
+export async function respondToSlotAction(
+  input: unknown
+): Promise<RespondToSlotState> {
+  const parsed = slotRespondSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { slotId, response, reason } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("respond_to_slot", {
+    slot_id: slotId,
+    response,
+    ...(response === "needs_reassignment" && reason !== null ? { reason } : {}),
+  })
+
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed"),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  return { ok: true, data: { state: response } }
+}
+
+/**
+ * Moves a task to another column (AD-3, AD-4). move_task decides whether the
+ * caller may; this only parses, calls it, maps the error and revalidates.
+ */
+export async function moveTaskAction(input: unknown): Promise<MoveTaskState> {
+  const parsed = taskMoveSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { taskId, toColumn } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("move_task", {
+    task_id: taskId,
+    to_column: toColumn,
+  })
+
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed"),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  return { ok: true, data: { column: toColumn } }
 }

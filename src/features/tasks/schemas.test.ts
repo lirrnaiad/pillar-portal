@@ -8,7 +8,9 @@ vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
 
-const { taskCreateSchema } = await import("./schemas")
+const { slotRespondSchema, taskCreateSchema, taskMoveSchema } = await import(
+  "./schemas"
+)
 
 const VALID = {
   title: "Lay out the spread",
@@ -157,5 +159,85 @@ describe("taskCreateSchema", () => {
       ],
     })
     expect(result.success).toBe(true)
+  })
+})
+
+const SLOT_ID = "00000000-0000-4000-8000-000000000011"
+const TASK_ID = "00000000-0000-4000-8000-000000000021"
+
+describe("slotRespondSchema", () => {
+  it.each(["on_it", "needs_reassignment"])("accepts the %s response", (response) => {
+    expect(slotRespondSchema.safeParse({ slotId: SLOT_ID, response }).success).toBe(true)
+  })
+
+  it("refuses awaiting_response, which isn't a response", () => {
+    const result = slotRespondSchema.safeParse({
+      slotId: SLOT_ID,
+      response: "awaiting_response",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("refuses a slot id that isn't a UUID", () => {
+    const result = slotRespondSchema.safeParse({ slotId: "abc", response: "on_it" })
+    expect(result.success).toBe(false)
+  })
+
+  it("trims the reason", () => {
+    const result = slotRespondSchema.parse({
+      slotId: SLOT_ID,
+      response: "needs_reassignment",
+      reason: "  Exams all week \n",
+    })
+    expect(result.reason).toBe("Exams all week")
+  })
+
+  it.each([undefined, null, "", "   \t\n "])("turns a blank reason (%j) into null", (reason) => {
+    const result = slotRespondSchema.parse({
+      slotId: SLOT_ID,
+      response: "needs_reassignment",
+      reason,
+    })
+    expect(result.reason).toBeNull()
+  })
+
+  it("accepts a 280-character reason, counted after trimming", () => {
+    const result = slotRespondSchema.safeParse({
+      slotId: SLOT_ID,
+      response: "needs_reassignment",
+      reason: `  ${"x".repeat(280)}  `,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("refuses a reason over 280 characters", () => {
+    const issues = slotRespondSchema.safeParse({
+      slotId: SLOT_ID,
+      response: "needs_reassignment",
+      reason: "x".repeat(281),
+    }).error?.issues
+    expect(
+      issues?.some(
+        (i) =>
+          i.path.join(".") === "reason" &&
+          i.message === "Keep the reason under 280 characters"
+      )
+    ).toBe(true)
+  })
+})
+
+describe("taskMoveSchema", () => {
+  it.each(["to_do", "doing", "for_review", "done"])("accepts a move to %s", (toColumn) => {
+    expect(taskMoveSchema.safeParse({ taskId: TASK_ID, toColumn }).success).toBe(true)
+  })
+
+  it("refuses a column that doesn't exist", () => {
+    expect(
+      taskMoveSchema.safeParse({ taskId: TASK_ID, toColumn: "archived" }).success
+    ).toBe(false)
+  })
+
+  it("refuses a task id that isn't a UUID", () => {
+    expect(taskMoveSchema.safeParse({ taskId: "abc", toColumn: "doing" }).success).toBe(false)
   })
 })
