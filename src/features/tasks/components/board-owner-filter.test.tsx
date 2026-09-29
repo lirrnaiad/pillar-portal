@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
+import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { TaskOwnerOption } from "../board"
@@ -39,6 +40,22 @@ describe("BoardOwnerFilter", () => {
     render(<BoardOwnerFilter owners={OWNERS} value="desk:layout" />)
 
     expect(trigger()).toHaveTextContent("Layout")
+  })
+
+  // Radix fills the trigger from the chosen item only after hydration; the
+  // label is given explicitly so the server-rendered filter isn't blank.
+  it.each([
+    ["desk:layout", "Layout"],
+    ["section:news", "News"],
+    ["all", "All"],
+    ["articles", "All articles"],
+  ])("renders %s's label in the server HTML", (value, label) => {
+    const html = renderToString(
+      <BoardOwnerFilter owners={OWNERS} value={value} />
+    )
+    const doc = new DOMParser().parseFromString(html, "text/html")
+
+    expect(doc.getElementById("board-owner")?.textContent).toBe(label)
   })
 
   it("lists All, All articles, then Sections and Desks groups", async () => {

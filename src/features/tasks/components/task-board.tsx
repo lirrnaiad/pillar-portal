@@ -48,6 +48,7 @@ import {
   type TaskColumn,
 } from "../status"
 import { MoveToSelect } from "./move-to-select"
+import { refreshAfterFailure } from "./refresh-after-failure"
 import { TaskCard } from "./task-card"
 
 type HowMoved = "select" | "drag"
@@ -150,12 +151,12 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
         result = await moveTaskAction({ taskId, toColumn })
       } catch {
         toast.error(taskErrorMessage("tasks.save_failed"))
-        router.refresh()
+        refreshAfterFailure(router)
         return
       }
       if (!result.ok) {
         toast.error(taskErrorMessage(result.code))
-        router.refresh()
+        refreshAfterFailure(router)
       }
     })
   }
@@ -229,7 +230,10 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
         aria-label="Board columns"
         tabIndex={0}
         className={cn(
-          "flex gap-column-gap overflow-x-auto overscroll-x-contain rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden focus-visible:ring-inset",
+          // relative: the row must be the containing block of the
+          // absolutely positioned sr-only text inside it, or that text
+          // escapes the row's clipping and widens the whole page.
+          "relative flex gap-column-gap overflow-x-auto overscroll-x-contain rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden focus-visible:ring-inset",
           BOARD_ROW_HEIGHT,
           // Below lg the row bleeds to the screen edge and snaps column by
           // column (not while dragging, so auto-scroll isn't snapped back).

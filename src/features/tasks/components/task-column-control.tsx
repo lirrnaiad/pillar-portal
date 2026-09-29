@@ -13,6 +13,7 @@ import {
   type TaskColumn,
 } from "../status"
 import { MoveToSelect } from "./move-to-select"
+import { refreshAfterFailure } from "./refresh-after-failure"
 
 /**
  * The task's column as a status dot with its label, plus a "Move to…" select
@@ -61,12 +62,12 @@ export function TaskColumnControl({
         result = await moveTaskAction({ taskId, toColumn })
       } catch {
         toast.error(taskErrorMessage("tasks.save_failed"))
-        router.refresh()
+        refreshAfterFailure(router)
         return
       }
       if (!result.ok) {
         toast.error(taskErrorMessage(result.code))
-        router.refresh()
+        refreshAfterFailure(router)
       }
     })
   }

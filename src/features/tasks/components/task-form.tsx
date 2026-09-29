@@ -35,11 +35,18 @@ import { Textarea } from "@/components/ui/textarea"
 import { createTaskAction, type CreateTaskState } from "../actions"
 import { taskErrorMessage } from "../errors"
 import type { TaskFormOptions } from "../queries"
-import { PRODUCTION_ROLES, taskCreateSchema, type TaskCreateInput } from "../schemas"
+import {
+  PRODUCTION_ROLES,
+  taskCreateSchema,
+  type TaskCreateInput,
+} from "../schemas"
 
 const EMPTY_SLOT = { role: PRODUCTION_ROLES[0], memberId: "" } as const
 
-type OwnerDefaults = { owningSectionId: string | null; owningDeskId: string | null }
+type OwnerDefaults = {
+  owningSectionId: string | null
+  owningDeskId: string | null
+}
 
 function emptyValues(owner?: OwnerDefaults): TaskCreateInput {
   return {
@@ -272,10 +279,7 @@ function SlotRow({
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-3 sm:flex-row sm:items-start">
-      <Field
-        className="flex-1"
-        data-invalid={!!rowErrors?.role || undefined}
-      >
+      <Field className="flex-1" data-invalid={!!rowErrors?.role || undefined}>
         <FieldLabel htmlFor={`task-slot-${index}-role`}>Role</FieldLabel>
         <Controller
           control={control}
@@ -328,16 +332,17 @@ function SlotRow({
           )}
         />
         <FieldError errors={[rowErrors?.memberId]} />
-        {roleMembers.length > 0 && roleMembers.length < options.allMembers.length && (
-          <label className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={showEveryone}
-              onChange={(event) => setShowEveryone(event.target.checked)}
-            />
-            Show everyone
-          </label>
-        )}
+        {roleMembers.length > 0 &&
+          roleMembers.length < options.allMembers.length && (
+            <label className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={showEveryone}
+                onChange={(event) => setShowEveryone(event.target.checked)}
+              />
+              Show everyone
+            </label>
+          )}
       </Field>
 
       {onRemove && (

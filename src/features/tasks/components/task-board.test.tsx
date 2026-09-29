@@ -145,6 +145,9 @@ describe("TaskBoard", () => {
     const row = screen.getByRole("region", { name: "Board columns" })
     expect(row).toHaveAttribute("tabindex", "0")
     expect(row).toHaveClass("overflow-x-auto")
+    // The containing block of the sr-only text inside it; otherwise that
+    // absolutely positioned text escapes the row and widens the page.
+    expect(row).toHaveClass("relative")
   })
 
   it("gives only a movable card a select and the drag wiring, and every card a link", () => {
@@ -256,6 +259,27 @@ describe("TaskBoard", () => {
         within(column("To Do")).getByText("Lay out the spread")
       ).toBeInTheDocument()
     )
+  })
+
+  it("rolls back and toasts offline without re-reading the page", async () => {
+    const user = userEvent.setup()
+    const onLine = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false)
+    moveTaskAction.mockRejectedValue(new TypeError("Failed to fetch"))
+    render(<TaskBoard cards={CARDS} />)
+
+    await chooseMove(user, "Lay out the spread", "Doing")
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Couldn't save — try again.")
+    )
+    await waitFor(() =>
+      expect(
+        within(column("To Do")).getByText("Lay out the spread")
+      ).toBeInTheDocument()
+    )
+    // Offline, a re-read would make Next.js fall back to a full navigation.
+    expect(refresh).not.toHaveBeenCalled()
+    onLine.mockRestore()
   })
 
   it("ignores another move while one saves, on every card", async () => {

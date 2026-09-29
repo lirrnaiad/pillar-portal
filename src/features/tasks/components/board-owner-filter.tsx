@@ -49,12 +49,25 @@ export function BoardOwnerFilter({
   const sections = owners.filter((owner) => owner.kind === "section")
   const desks = owners.filter((owner) => owner.kind === "desk")
 
+  // The trigger's text, given explicitly: Radix otherwise fills it in from
+  // the chosen item only after hydration, so the server-rendered filter would
+  // show blank until the page's script runs.
+  const shownLabel =
+    shown === ownerFilterParam({ kind: "all" })
+      ? "All"
+      : shown === ownerFilterParam({ kind: "articles" })
+        ? "All articles"
+        : owners.find(
+            (owner) =>
+              ownerFilterParam({ kind: owner.kind, id: owner.id }) === shown
+          )?.name
+
   return (
     <div className="flex flex-col gap-2 sm:max-w-xs">
       <Label htmlFor="board-owner">Section or desk</Label>
       <Select value={shown} onValueChange={choose}>
         <SelectTrigger id="board-owner" className="min-h-11 w-full">
-          <SelectValue />
+          <SelectValue>{shownLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem

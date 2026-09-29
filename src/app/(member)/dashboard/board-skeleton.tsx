@@ -11,7 +11,7 @@ export function BoardColumnsSkeleton() {
       role="status"
       aria-busy="true"
       className={cn(
-        "-mx-page-margin-mobile flex gap-column-gap overflow-hidden px-page-margin-mobile md:-mx-page-margin-desktop md:px-page-margin-desktop lg:mx-0 lg:px-0",
+        "relative -mx-page-margin-mobile flex gap-column-gap overflow-hidden px-page-margin-mobile md:-mx-page-margin-desktop md:px-page-margin-desktop lg:mx-0 lg:px-0",
         BOARD_ROW_HEIGHT
       )}
     >
