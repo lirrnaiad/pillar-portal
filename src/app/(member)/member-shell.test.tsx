@@ -19,6 +19,7 @@ import { MemberShell } from "./member-shell"
 // this file's imports, so the action mock the tests inspect is vi.hoisted.
 const { signOutAction } = vi.hoisted(() => ({ signOutAction: vi.fn() }))
 
+vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard" }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }))
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
@@ -72,6 +73,18 @@ describe("MemberShell", () => {
     expect(screen.getByRole("main")).toHaveTextContent("What's mine")
   })
 
+  it("shows the Dashboard views tabs in the banner with What's mine current", () => {
+    renderShell()
+    const banner = screen.getByRole("banner")
+
+    const nav = within(banner).getByRole("navigation", {
+      name: "Dashboard views",
+    })
+    expect(
+      within(nav).getByRole("link", { name: "What's mine" })
+    ).toHaveAttribute("aria-current", "page")
+  })
+
   it("opens the menu with Enter, offers Sign out, and returns focus on Escape", async () => {
     const user = userEvent.setup()
     renderShell()
@@ -110,10 +123,9 @@ describe("MemberShell", () => {
       .map((item) => item.textContent)
 
     expect(items).toEqual(["Admin", "Sign out"])
-    expect(within(menu).getByRole("menuitem", { name: "Admin" })).toHaveAttribute(
-      "href",
-      "/admin"
-    )
+    expect(
+      within(menu).getByRole("menuitem", { name: "Admin" })
+    ).toHaveAttribute("href", "/admin")
   })
 
   it("offers no Admin link to a staff member", async () => {

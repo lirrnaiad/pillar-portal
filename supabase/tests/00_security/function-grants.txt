@@ -33,3 +33,7 @@ authenticated private.can_move_task(uuid, task_column)
 authenticated public.respond_to_slot(uuid, slot_state, text)
 authenticated public.move_task(uuid, task_column)
 authenticated public.task_capabilities(uuid[])
+
+# tasks_open_slots: the one definition of an open slot, and the viewer's own
+authenticated private.open_slots(uuid)
+authenticated public.my_open_slots()

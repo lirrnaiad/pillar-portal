@@ -14,17 +14,20 @@ export const HEADER_FOCUS =
  * The app header (DESIGN.md › App header): a navy bar with the logo and the
  * wordmark at left, the 3px brand-gold rule along the bottom, and `children`
  * (such as the avatar menu) at right. With `homeHref`, the logo and wordmark
- * link there.
+ * link there. `nav` (the view tabs) is a second row under them, as wide as the
+ * first.
  */
 export function AppHeader({
   homeHref,
   className,
+  nav,
   children,
 }: {
   homeHref?: string
   /** Merged onto the inner content div, so a wider shell (admin routes go up
    * to 1440px, DESIGN.md) can override the default 640px `max-w-160`. */
   className?: string
+  nav?: React.ReactNode
   children?: React.ReactNode
 }) {
   const brand = (
@@ -63,6 +66,16 @@ export function AppHeader({
         )}
         {children}
       </div>
+      {nav && (
+        <div
+          className={cn(
+            "mx-auto w-full max-w-160 px-page-margin-mobile md:px-page-margin-desktop",
+            className
+          )}
+        >
+          {nav}
+        </div>
+      )}
     </header>
   )
 }
