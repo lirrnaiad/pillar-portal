@@ -9,3 +9,20 @@ allowBuilds:
 # when an install needs one it adds an entry under minimumReleaseAgeExclude
 # here instead of failing. Remove each such entry once its version ages out of
 # the window, and never keep one without a reason written next to it.
+
+# Next 16.3.7 (and its platform packages) is the architecture spine's version
+# floor after 2026-09-30 (Story 1.8's approved bump); it is younger than the
+# release-age window. Remove these once 16.3.7 ages out.
+minimumReleaseAgeExclude:
+  - '@next/env@16.3.7'
+  - '@next/eslint-plugin-next@16.3.7'
+  - '@next/swc-darwin-arm64@16.3.7'
+  - '@next/swc-darwin-x64@16.3.7'
+  - '@next/swc-linux-arm64-gnu@16.3.7'
+  - '@next/swc-linux-arm64-musl@16.3.7'
+  - '@next/swc-linux-x64-gnu@16.3.7'
+  - '@next/swc-linux-x64-musl@16.3.7'
+  - '@next/swc-win32-arm64-msvc@16.3.7'
+  - '@next/swc-win32-x64-msvc@16.3.7'
+  - eslint-config-next@16.3.7
+  - next@16.3.7

@@ -1,5 +1,8 @@
 // Fails when build output that reaches the browser contains a Supabase secret
-// key or the value of any server-only environment variable (AD-6).
+// key (`sb_secret_` followed by 16+ key characters) or the value of any
+// server-only environment variable (AD-6). The key is matched by shape, not by
+// its bare prefix: supabase-js's own source holds `startsWith("sb_secret_")`,
+// which any client bundle importing the browser client carries.
 //
 // Scans .next/static/** and the prerendered .next/server/app/**/*.{html,rsc,body}
 // (`.body` is a prerendered route-handler response, e.g. favicon.ico.body).
@@ -31,8 +34,15 @@ const MIN_VALUE_LENGTH = 8
 const PRERENDERED = [".html", ".rsc", ".body"]
 const IN_CI = process.env.CI === "true"
 
+// A secret key is tested against the file's bytes read as latin1, which maps
+// bytes one-to-one and so is safe on any file. Server-only variable values
+// stay literal byte matches.
+const SECRET_KEY_PATTERN = /sb_secret_[A-Za-z0-9_-]{16,}/
 const needles = [
-  { label: "sb_secret_ (Supabase secret key prefix)", value: "sb_secret_" },
+  {
+    label: "sb_secret_ followed by 16+ key characters (a Supabase secret key)",
+    pattern: SECRET_KEY_PATTERN,
+  },
 ]
 const skipped = []
 const unset = []
@@ -92,8 +102,12 @@ if (targets.length === 0) {
 const findings = []
 for (const file of targets) {
   const bytes = await readFile(file)
+  const text = bytes.toString("latin1")
   for (const needle of needles) {
-    if (bytes.includes(needle.value)) {
+    const found = needle.pattern
+      ? needle.pattern.test(text)
+      : bytes.includes(needle.value)
+    if (found) {
       findings.push(`${path.relative(ROOT, file)}: contains ${needle.label}`)
     }
   }

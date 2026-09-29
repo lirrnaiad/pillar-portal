@@ -38,6 +38,29 @@ const TASK: TaskCardData = {
 }
 
 describe("TaskCard", () => {
+  it("spreads titleLinkProps onto the title link, and adds nothing without them", () => {
+    const { rerender } = render(<TaskCard task={TASK} />)
+    const plain = screen.getByRole("link", { name: "Lay out the spread" })
+    expect(plain).not.toHaveAttribute("aria-describedby")
+    expect(plain).not.toHaveAttribute("draggable")
+
+    const ref = { current: null as HTMLAnchorElement | null }
+    rerender(
+      <TaskCard
+        task={TASK}
+        titleLinkProps={{
+          ref,
+          "aria-describedby": "dnd-instructions",
+          draggable: false,
+        }}
+      />
+    )
+    const link = screen.getByRole("link", { name: "Lay out the spread" })
+    expect(link).toHaveAttribute("aria-describedby", "dnd-instructions")
+    expect(link).toHaveAttribute("draggable", "false")
+    expect(ref.current).toBe(link)
+  })
+
   it("links to Task detail, named by the title alone", () => {
     render(<TaskCard task={TASK} />)
 

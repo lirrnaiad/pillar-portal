@@ -26,8 +26,9 @@ set local role postgres;
 set local search_path = "$user", public, extensions;
 
 -- The tables in the `supabase_realtime` publication, as `schema.table`
--- (AD-14). Empty until the tasks slice publishes its tables.
-\set expected_realtime_tables '{}'
+-- (AD-14). The tasks slice publishes `tasks` and `task_assignments` so the
+-- Board can refetch on change.
+\set expected_realtime_tables '{public.task_assignments,public.tasks}'
 
 -- If `cat` fails, psql prints the error and leaves this empty, which would
 -- make check 6 expect no grants at all; the first assertion catches that.

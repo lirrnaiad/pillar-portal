@@ -19,7 +19,10 @@ import { MemberShell } from "./member-shell"
 // this file's imports, so the action mock the tests inspect is vi.hoisted.
 const { signOutAction } = vi.hoisted(() => ({ signOutAction: vi.fn() }))
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard" }))
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard",
+  useSearchParams: () => new URLSearchParams(),
+}))
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }))
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
@@ -71,6 +74,29 @@ describe("MemberShell", () => {
       })
     ).toHaveClass("size-11")
     expect(screen.getByRole("main")).toHaveTextContent("What's mine")
+  })
+
+  it("caps main at 640px, widening it to 1440px only when a view asks, and never widens the header", () => {
+    render(
+      <MemberShell member={{ name: "Head Layout Artist", role: "staff" }}>
+        <div data-wide-view />
+      </MemberShell>
+    )
+
+    const main = screen.getByRole("main")
+    expect(main).toHaveClass(
+      "max-w-160",
+      "has-[[data-wide-view]]:max-w-[1440px]"
+    )
+    // The header's content row and the tabs row stay 640px on every view, so
+    // switching tabs never moves the logo, tabs or avatar.
+    const banner = screen.getByRole("banner")
+    const rows = [...banner.children].filter((el) => el.tagName === "DIV")
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      expect(row).toHaveClass("max-w-160")
+      expect(row.className).not.toMatch(/1440/)
+    }
   })
 
   it("shows the Dashboard views tabs in the banner with What's mine current", () => {

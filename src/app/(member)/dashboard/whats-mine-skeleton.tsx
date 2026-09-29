@@ -2,8 +2,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 // What's mine's layout in outline while getWhatsMine runs: the h1, a section
 // heading with two cards and their button rows, then a heading and three
-// cards. It sits in the (whats-mine) group so it never shows for Task detail.
-export default function WhatsMineLoading() {
+// cards. dashboard/page.tsx uses it as What's mine's Suspense fallback, so it
+// never shows for the Board or Task detail.
+export function WhatsMineSkeleton() {
   return (
     <div role="status" aria-busy="true">
       <span className="sr-only">Loading your tasks</span>

@@ -36,15 +36,40 @@ function checkBundle(
 }
 
 describe("check:bundle", () => {
-  it("fails when .next/static contains sb_secret_, naming the file", () => {
+  it("fails when .next/static contains a Supabase secret key, naming the file", () => {
+    // sb_secret_ plus 31 characters, the shape of a real key. Built at
+    // runtime so no key-shaped literal sits in the source (GitHub's push
+    // protection would block it as a Supabase secret).
     const result = checkBundle({
-      ".next/static/chunks/app.js": 'const key = "sb_secret_abc123"\n',
+      ".next/static/chunks/app.js":
+        'const key = "sb_secret_' + "0123456789abcdefghijklmnopqrstu" + '"\n',
     })
 
     expect(result.status).toBe(1)
     expect(result.output).toContain(
       ".next/static/chunks/app.js: contains sb_secret_"
     )
+  })
+
+  it("passes a bundle that only tests for the prefix, as supabase-js does", () => {
+    const result = checkBundle({
+      ".next/static/chunks/app.js":
+        'let ni=t=>t.startsWith("sb_publishable_")||t.startsWith("sb_secret_")\n',
+    })
+
+    expect(result.status).toBe(0)
+  })
+
+  it("fails on a key at the pattern's 16-character minimum, and passes one short of it", () => {
+    const at = checkBundle({
+      ".next/static/chunks/app.js": 'k="sb_secret_' + "a".repeat(16) + '"\n',
+    })
+    expect(at.status).toBe(1)
+
+    const under = checkBundle({
+      ".next/static/chunks/app.js": 'k="sb_secret_' + "a".repeat(15) + '"\n',
+    })
+    expect(under.status).toBe(0)
   })
 
   it.each([
