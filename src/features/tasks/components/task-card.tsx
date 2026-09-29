@@ -1,3 +1,4 @@
+import type { Ref } from "react"
 import Link from "next/link"
 
 import { StatusBadge, StatusDot } from "@/components/status-badge"
@@ -16,6 +17,17 @@ const DUE_FORMAT = "EEE, MMM d, h:mm a"
 const MAX_AVATARS = 3
 
 /**
+ * Extra props for the title link, so the Board can make it the keyboard drag
+ * activator (its ref, dnd-kit's `aria-describedby`, `draggable={false}`).
+ * Without them nothing changes.
+ */
+export type TitleLinkProps = {
+  ref?: Ref<HTMLAnchorElement>
+  "aria-describedby"?: string
+  draggable?: boolean
+}
+
+/**
  * A task card (UX-DR20, without the overflow menu). The title is the only
  * link and its box is stretched over the card's upper block, so tapping
  * anywhere there opens Task detail; `children` sit below that block, outside
@@ -29,9 +41,11 @@ const MAX_AVATARS = 3
 export function TaskCard({
   task,
   children,
+  titleLinkProps,
 }: {
   task: TaskCardData
   children?: React.ReactNode
+  titleLinkProps?: TitleLinkProps
 }) {
   const shown = task.assignees.slice(0, MAX_AVATARS)
   const extra = task.assignees.length - shown.length
@@ -43,6 +57,7 @@ export function TaskCard({
           <Link
             href={`/dashboard/tasks/${task.id}`}
             className="after:absolute after:inset-0 after:rounded-lg focus-visible:outline-hidden"
+            {...titleLinkProps}
           >
             {task.title}
           </Link>

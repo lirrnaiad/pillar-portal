@@ -3,12 +3,19 @@ import "@testing-library/jest-dom/vitest"
 
 import { cleanup, render, screen } from "@testing-library/react"
 import axe from "axe-core"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { usePathname } = vi.hoisted(() => ({ usePathname: vi.fn() }))
-vi.mock("next/navigation", () => ({ usePathname }))
+const { usePathname, useSearchParams } = vi.hoisted(() => ({
+  usePathname: vi.fn(),
+  useSearchParams: vi.fn(),
+}))
+vi.mock("next/navigation", () => ({ usePathname, useSearchParams }))
 
 import { DashboardTabs } from "./dashboard-tabs"
+
+beforeEach(() => {
+  useSearchParams.mockReturnValue(new URLSearchParams())
+})
 
 afterEach(() => {
   cleanup()
@@ -48,12 +55,56 @@ describe("DashboardTabs", () => {
     expect(link).not.toHaveClass("rounded-sm")
   })
 
+  it("links Board to /dashboard?view=board", () => {
+    usePathname.mockReturnValue("/dashboard")
+    render(<DashboardTabs />)
+
+    expect(screen.getByRole("link", { name: "Board" })).toHaveAttribute(
+      "href",
+      "/dashboard?view=board"
+    )
+  })
+
+  it("marks Board current, and not What's mine, on /dashboard?view=board", () => {
+    usePathname.mockReturnValue("/dashboard")
+    useSearchParams.mockReturnValue(new URLSearchParams("view=board&owner=all"))
+    render(<DashboardTabs />)
+
+    const board = screen.getByRole("link", { name: "Board" })
+    expect(board).toHaveAttribute("aria-current", "page")
+    expect(board).toHaveClass("border-white", "text-white")
+    const mine = screen.getByRole("link", { name: "What's mine" })
+    expect(mine).not.toHaveAttribute("aria-current")
+    expect(mine).toHaveClass("text-white/72")
+  })
+
+  // Read as the page reads it: a repeated view renders What's mine.
+  it.each([
+    ["an unknown view", "view=nope"],
+    ["a repeated view", "view=board&view=board"],
+  ])("keeps What's mine current for %s", (_label, search) => {
+    usePathname.mockReturnValue("/dashboard")
+    useSearchParams.mockReturnValue(new URLSearchParams(search))
+    render(<DashboardTabs />)
+
+    expect(screen.getByRole("link", { name: "What's mine" })).toHaveAttribute(
+      "aria-current",
+      "page"
+    )
+    expect(screen.getByRole("link", { name: "Board" })).not.toHaveAttribute(
+      "aria-current"
+    )
+  })
+
   it("is present but not current on a task's page", () => {
     usePathname.mockReturnValue("/dashboard/tasks/abc")
     render(<DashboardTabs />)
 
     const link = screen.getByRole("link", { name: "What's mine" })
     expect(link).not.toHaveAttribute("aria-current")
+    expect(screen.getByRole("link", { name: "Board" })).not.toHaveAttribute(
+      "aria-current"
+    )
     expect(link).toHaveClass("min-h-11", "text-white/72")
     expect(link).not.toHaveClass("border-white")
   })

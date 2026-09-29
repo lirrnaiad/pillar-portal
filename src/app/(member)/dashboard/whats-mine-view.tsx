@@ -1,16 +1,11 @@
-import type { Metadata } from "next"
-
 import { getWhatsMine, WhatsMineTasks } from "@/features/tasks"
-
-export const metadata: Metadata = {
-  title: "What's mine · The Pillar Portal",
-}
 
 const HEADING_ID = "whats-mine-heading"
 
 // What's mine (EXPERIENCE.md). Reads as the viewer on every request. The h1
 // is the focus target when an answered Waiting item leaves the page.
-export default async function DashboardPage() {
+// dashboard/page.tsx renders it under its own Suspense boundary.
+export async function WhatsMineView() {
   const whatsMine = await getWhatsMine()
   const empty = whatsMine.waiting.length === 0 && whatsMine.tasks.length === 0
 

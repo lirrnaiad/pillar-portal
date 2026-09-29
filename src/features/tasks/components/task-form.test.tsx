@@ -23,7 +23,9 @@ const { createTaskAction, toastSuccess, toastError } = vi.hoisted(() => ({
 }))
 
 vi.mock("../actions", () => ({ createTaskAction }))
-vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }))
+vi.mock("sonner", () => ({
+  toast: { success: toastSuccess, error: toastError },
+}))
 // TaskForm imports PRODUCTION_ROLE_LABELS through @/features/members, whose
 // index.ts also pulls in actions.ts (env.client) and queries.ts
 // (supabase/server) at module load. Neither is exercised by this component.
@@ -204,12 +206,12 @@ describe("TaskForm", () => {
         slots: [{ role: "layout_artist", memberId: MEMBER_1 }],
       })
     )
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Task created"))
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Task created")
+    )
 
     // Reset: the title is cleared...
-    await waitFor(() =>
-      expect(screen.getByLabelText("Title")).toHaveValue("")
-    )
+    await waitFor(() => expect(screen.getByLabelText("Title")).toHaveValue(""))
     // ...but the owner survives the reset.
     expect(screen.getByRole("combobox", { name: "Owner" })).toHaveTextContent(
       "News"
@@ -241,7 +243,9 @@ describe("TaskForm", () => {
     await user.click(screen.getByRole("button", { name: "Create task" }))
 
     await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Couldn't create the task. Try again.")
+      expect(toastError).toHaveBeenCalledWith(
+        "Couldn't create the task. Try again."
+      )
     )
   })
 

@@ -10,13 +10,30 @@ export type {
   MoveTaskState,
   RespondToSlotState,
 } from "./actions"
+export {
+  BOARD_ROW_HEIGHT,
+  boardEmptyMessage,
+  ownerFilterParam,
+  parseOwnerFilterParam,
+} from "./board"
+export type { OwnerFilter } from "./board"
+export { BoardOwnerFilter } from "./components/board-owner-filter"
+export { TaskBoard } from "./components/task-board"
+export { TaskChangesRefresher } from "./components/task-changes-refresher"
 export { TaskDetailView } from "./components/task-detail-view"
 export { TaskForm } from "./components/task-form"
 export { WhatsMineTasks } from "./components/whats-mine-tasks"
 export { TASK_ERROR_COPY, taskErrorMessage } from "./errors"
 export type { TaskErrorCode } from "./errors"
-export { getTaskDetail, getTaskFormOptions, getWhatsMine } from "./queries"
+export {
+  getBoard,
+  getBoardOwners,
+  getTaskDetail,
+  getTaskFormOptions,
+  getWhatsMine,
+} from "./queries"
 export type {
+  BoardCard,
   SlotMemberOption,
   SlotMembersByRole,
   TaskCardAssignee,

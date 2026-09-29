@@ -5,16 +5,34 @@ import { z } from "zod"
 import {
   initialsOf,
   PRODUCTION_ROLE_LABELS,
+  WRITERS_DESK_ID,
   type ProductionRole,
 } from "@/features/members"
 import { createClient } from "@/lib/supabase/server"
 
+import type { OwnerFilter, TaskOwnerOption } from "./board"
 import { isTaskOverdue, type SlotState, type TaskColumn } from "./status"
 
-export type TaskOwnerOption = {
-  kind: "section" | "desk"
-  id: string
-  name: string
+export type { TaskOwnerOption }
+
+/**
+ * Every content section, then every desk but Writers (which owns no task):
+ * the one owner list the task form and the Board's filter share.
+ */
+function ownerOptions(
+  sections: { id: string; name: string }[],
+  desks: { id: string; name: string }[]
+): TaskOwnerOption[] {
+  return [
+    ...sections.map((section) => ({
+      kind: "section" as const,
+      id: section.id,
+      name: section.name,
+    })),
+    ...desks
+      .filter((desk) => desk.id !== WRITERS_DESK_ID)
+      .map((desk) => ({ kind: "desk" as const, id: desk.id, name: desk.name })),
+  ]
 }
 
 export type SlotMemberOption = {
@@ -113,16 +131,7 @@ export async function getTaskFormOptions(): Promise<TaskFormOptions> {
     desks.map((desk) => [desk.id, desk.production_role])
   )
 
-  const owners: TaskOwnerOption[] = [
-    ...sections.map((section) => ({
-      kind: "section" as const,
-      id: section.id,
-      name: section.name,
-    })),
-    ...desks
-      .filter((desk) => desk.id !== "writers")
-      .map((desk) => ({ kind: "desk" as const, id: desk.id, name: desk.name })),
-  ]
+  const owners = ownerOptions(sections, desks)
 
   const slotMembersByRole: SlotMembersByRole = {}
   const allMembers: SlotMemberOption[] = []
@@ -150,6 +159,32 @@ export async function getTaskFormOptions(): Promise<TaskFormOptions> {
     allMembers,
     roleLabels: PRODUCTION_ROLE_LABELS,
   }
+}
+
+/**
+ * The Board's owner filter choices: the task form's owner list. Reads
+ * `sections` and `desks` directly (every active member may). Throws on any
+ * query error.
+ */
+export async function getBoardOwners(): Promise<TaskOwnerOption[]> {
+  const supabase = await createClient()
+
+  const [sectionsResult, desksResult] = await Promise.all([
+    supabase.from("sections").select("id, name").order("sort_order"),
+    supabase.from("desks").select("id, name").order("sort_order"),
+  ])
+  if (sectionsResult.error) {
+    throw new Error("getBoardOwners: reading sections failed", {
+      cause: sectionsResult.error,
+    })
+  }
+  if (desksResult.error) {
+    throw new Error("getBoardOwners: reading desks failed", {
+      cause: desksResult.error,
+    })
+  }
+
+  return ownerOptions(sectionsResult.data ?? [], desksResult.data ?? [])
 }
 
 export type TaskDetailSlot = {
@@ -355,6 +390,57 @@ function byDueThenId(
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
 
+type CardTask = {
+  id: string
+  title: string
+  due_at: string
+  column: TaskColumn
+  sections: { name: string } | null
+  desks: { name: string } | null
+}
+
+/** One task card's data, from the task, its slots (in slot order) and the names. */
+function toTaskCard(
+  task: CardTask,
+  slots: { member_id: string; state: SlotState }[],
+  nameById: Map<string, string>,
+  now: Date
+): TaskCardData {
+  const seen = new Set<string>()
+  const assignees: TaskCardAssignee[] = []
+  for (const slot of slots) {
+    if (seen.has(slot.member_id)) continue
+    seen.add(slot.member_id)
+    const name = nameById.get(slot.member_id) ?? FORMER_MEMBER
+    assignees.push({ id: slot.member_id, name, initials: initialsOf(name) })
+  }
+  return {
+    id: task.id,
+    title: task.title,
+    ownerName: task.sections?.name ?? task.desks?.name ?? "",
+    dueAt: task.due_at,
+    column: task.column,
+    overdue: isTaskOverdue(task.due_at, task.column, now),
+    hasAwaitingResponse: slots.some(
+      (slot) => slot.state === "awaiting_response"
+    ),
+    hasNeedsReassignment: slots.some(
+      (slot) => slot.state === "needs_reassignment"
+    ),
+    assignees,
+  }
+}
+
+function nameMap(rows: { id: string | null; name: string | null }[]) {
+  const nameById = new Map<string, string>()
+  for (const member of rows) {
+    if (member.id !== null && member.name !== null) {
+      nameById.set(member.id, member.name)
+    }
+  }
+  return nameById
+}
+
 /**
  * Everything What's mine shows. Which slots are open comes from
  * my_open_slots() (the one definition, in the database); nothing here
@@ -420,12 +506,7 @@ export async function getWhatsMine(): Promise<WhatsMine> {
     })
   }
 
-  const nameById = new Map<string, string>()
-  for (const member of membersResult.data ?? []) {
-    if (member.id !== null && member.name !== null) {
-      nameById.set(member.id, member.name)
-    }
-  }
+  const nameById = nameMap(membersResult.data ?? [])
 
   const respondable = new Set(
     (capabilitiesResult.data ?? []).flatMap((row) => row.respondable_slot_ids)
@@ -441,30 +522,10 @@ export async function getWhatsMine(): Promise<WhatsMine> {
   const now = new Date()
   const cards = new Map<string, TaskCardData>()
   for (const task of tasksResult.data ?? []) {
-    const slots = slotsByTask.get(task.id) ?? []
-    const seen = new Set<string>()
-    const assignees: TaskCardAssignee[] = []
-    for (const slot of slots) {
-      if (seen.has(slot.member_id)) continue
-      seen.add(slot.member_id)
-      const name = nameById.get(slot.member_id) ?? FORMER_MEMBER
-      assignees.push({ id: slot.member_id, name, initials: initialsOf(name) })
-    }
-    cards.set(task.id, {
-      id: task.id,
-      title: task.title,
-      ownerName: task.sections?.name ?? task.desks?.name ?? "",
-      dueAt: task.due_at,
-      column: task.column,
-      overdue: isTaskOverdue(task.due_at, task.column, now),
-      hasAwaitingResponse: slots.some(
-        (slot) => slot.state === "awaiting_response"
-      ),
-      hasNeedsReassignment: slots.some(
-        (slot) => slot.state === "needs_reassignment"
-      ),
-      assignees,
-    })
+    cards.set(
+      task.id,
+      toTaskCard(task, slotsByTask.get(task.id) ?? [], nameById, now)
+    )
   }
 
   const waiting: WaitingSlot[] = []
@@ -496,4 +557,83 @@ export async function getWhatsMine(): Promise<WhatsMine> {
     .sort(byDueThenId)
 
   return { waiting, tasks }
+}
+
+export type BoardCard = TaskCardData & {
+  /** From task_capabilities' allowed_moves (AD-4), in enum order. */
+  allowedMoves: TaskColumn[]
+}
+
+/**
+ * Every task the filter names, as cards ordered by due date then id. The
+ * slots come embedded in the tasks query (a Board can hold hundreds of
+ * tasks, too many for an `.in()` list); with no tasks it stops there,
+ * otherwise task_capabilities and the names from member_directory (never
+ * `members`) are read together. The whole directory is read rather than an
+ * `.in()` of slot members: over the years those ids could outgrow a URL,
+ * while the directory holds only active members. Throws on any query error.
+ */
+export async function getBoard(filter: OwnerFilter): Promise<BoardCard[]> {
+  const supabase = await createClient()
+
+  let query = supabase
+    .from("tasks")
+    .select(
+      "id, title, due_at, column, sections(name), desks(name), task_assignments(member_id, state)"
+    )
+    .order("due_at")
+    .order("id")
+    .order("created_at", { referencedTable: "task_assignments" })
+    .order("id", { referencedTable: "task_assignments" })
+  switch (filter.kind) {
+    case "section":
+      query = query.eq("owning_section_id", filter.id)
+      break
+    case "desk":
+      query = query.eq("owning_desk_id", filter.id)
+      break
+    case "articles":
+      query = query.not("owning_section_id", "is", null)
+      break
+    case "all":
+      break
+  }
+
+  const tasksResult = await query
+  if (tasksResult.error) {
+    throw new Error("getBoard: reading tasks failed", {
+      cause: tasksResult.error,
+    })
+  }
+  const tasks = tasksResult.data ?? []
+  if (tasks.length === 0) return []
+
+  const [capabilitiesResult, membersResult] = await Promise.all([
+    supabase.rpc("task_capabilities", { ids: tasks.map((task) => task.id) }),
+    supabase.from("member_directory").select("id, name"),
+  ])
+  if (capabilitiesResult.error) {
+    throw new Error("getBoard: reading task_capabilities failed", {
+      cause: capabilitiesResult.error,
+    })
+  }
+  if (membersResult.error) {
+    throw new Error("getBoard: reading member_directory failed", {
+      cause: membersResult.error,
+    })
+  }
+
+  const nameById = nameMap(membersResult.data ?? [])
+  const movesByTask = new Map(
+    (capabilitiesResult.data ?? []).map((row) => [
+      row.task_id,
+      row.allowed_moves,
+    ])
+  )
+
+  const now = new Date()
+  return tasks.map((task) => ({
+    ...toTaskCard(task, task.task_assignments, nameById, now),
+    allowedMoves: movesByTask.get(task.id) ?? [],
+  }))
 }

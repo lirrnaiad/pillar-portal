@@ -1,24 +1,10 @@
 "use client"
 
-import {
-  useEffect,
-  useOptimistic,
-  useRef,
-  useState,
-  useTransition,
-} from "react"
+import { useEffect, useOptimistic, useRef, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { StatusDot } from "@/components/status-badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-
 import { moveTaskAction, type MoveTaskState } from "../actions"
 import { taskErrorMessage } from "../errors"
 import {
@@ -26,8 +12,8 @@ import {
   TASK_COLUMN_LABELS,
   type TaskColumn,
 } from "../status"
-
-const MOVE_LABEL = "Move to…"
+import { MoveToSelect } from "./move-to-select"
+import { refreshAfterFailure } from "./refresh-after-failure"
 
 /**
  * The task's column as a status dot with its label, plus a "Move to…" select
@@ -53,7 +39,6 @@ export function TaskColumnControl({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [shownColumn, setShownColumn] = useOptimistic(column)
-  const [open, setOpen] = useState(false)
   const statusRef = useRef<HTMLParagraphElement>(null)
   const hasMoves = allowedMoves.length > 0
   const hadMoves = useRef(hasMoves)
@@ -77,12 +62,12 @@ export function TaskColumnControl({
         result = await moveTaskAction({ taskId, toColumn })
       } catch {
         toast.error(taskErrorMessage("tasks.save_failed"))
-        router.refresh()
+        refreshAfterFailure(router)
         return
       }
       if (!result.ok) {
         toast.error(taskErrorMessage(result.code))
-        router.refresh()
+        refreshAfterFailure(router)
       }
     })
   }
@@ -103,29 +88,11 @@ export function TaskColumnControl({
         />
       </p>
       {hasMoves && (
-        // Controlled at "" so the trigger always reads "Move to…": it is a
-        // command, not a field that keeps a value.
-        <Select
-          value=""
-          open={open}
-          onOpenChange={(next) => setOpen(next && !isPending)}
-          onValueChange={(value) => move(value as TaskColumn)}
-        >
-          <SelectTrigger
-            aria-label={MOVE_LABEL}
-            aria-disabled={isPending || undefined}
-            className="min-h-11 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-          >
-            <SelectValue placeholder={MOVE_LABEL} />
-          </SelectTrigger>
-          <SelectContent>
-            {allowedMoves.map((toColumn) => (
-              <SelectItem key={toColumn} value={toColumn} className="min-h-11">
-                {TASK_COLUMN_LABELS[toColumn]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MoveToSelect
+          allowedMoves={allowedMoves}
+          pending={isPending}
+          onMove={move}
+        />
       )}
     </div>
   )

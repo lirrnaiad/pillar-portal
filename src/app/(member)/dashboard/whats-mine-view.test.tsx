@@ -30,7 +30,7 @@ const { getWhatsMine, WhatsMineTasks } = vi.hoisted(() => ({
 
 vi.mock("@/features/tasks", () => ({ getWhatsMine, WhatsMineTasks }))
 
-import DashboardPage, { metadata } from "./page"
+import { WhatsMineView } from "./whats-mine-view"
 
 afterEach(() => {
   cleanup()
@@ -46,14 +46,10 @@ async function axeViolations(node: Element) {
 }
 
 async function renderPage() {
-  return render(await DashboardPage())
+  return render(await WhatsMineView())
 }
 
-describe("DashboardPage", () => {
-  it("is titled What's mine", () => {
-    expect(metadata.title).toBe("What's mine · The Pillar Portal")
-  })
-
+describe("WhatsMineView", () => {
   it("has an h1 that can take focus, for the item that leaves after an answer", async () => {
     getWhatsMine.mockResolvedValue({ waiting: [], tasks: [] })
     await renderPage()
@@ -102,7 +98,7 @@ describe("DashboardPage", () => {
   it("lets a query failure throw", async () => {
     getWhatsMine.mockRejectedValue(new Error("boom"))
 
-    await expect(DashboardPage()).rejects.toThrow("boom")
+    await expect(WhatsMineView()).rejects.toThrow("boom")
   })
 
   it("has no axe violations, empty or listed", async () => {

@@ -37,3 +37,7 @@ authenticated public.task_capabilities(uuid[])
 # tasks_open_slots: the one definition of an open slot, and the viewer's own
 authenticated private.open_slots(uuid)
 authenticated public.my_open_slots()
+
+# tasks_realtime: who may join the private task-changes channel (called from
+# the realtime.messages policy, which runs as the joining caller)
+authenticated private.can_join_task_changes()

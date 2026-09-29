@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils"
 
 import { respondToSlotAction, type RespondToSlotState } from "../actions"
 import { taskErrorMessage } from "../errors"
+import { refreshAfterFailure } from "./refresh-after-failure"
 
 const REASON_MAX = 280
 
@@ -95,12 +96,12 @@ export function SlotResponse({
         })
       } catch {
         toast.error(taskErrorMessage("tasks.save_failed"))
-        router.refresh()
+        refreshAfterFailure(router)
         return
       }
       if (!result.ok) {
         toast.error(taskErrorMessage(result.code))
-        router.refresh()
+        refreshAfterFailure(router)
         return
       }
       document.getElementById(rowId)?.focus()

@@ -1,34 +1,42 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 import { HEADER_FOCUS } from "@/components/app-header"
 import { cn } from "@/lib/utils"
 
-// Only What's mine exists so far; Board and Planner join in Stories 1.8 and
-// 1.9. Imports nothing from @/features, so the header stays light.
-const TABS = [{ label: "What's mine", href: "/dashboard" }]
+import { parseDashboardView, type DashboardView } from "./dashboard-views"
+
+// What's mine and the Board; Planner joins in Story 1.9. Imports nothing from
+// @/features, so the header stays light.
+const TABS: { label: string; href: string; view: DashboardView }[] = [
+  { label: "What's mine", href: "/dashboard", view: "whats-mine" },
+  { label: "Board", href: "/dashboard?view=board", view: "board" },
+]
 
 /**
  * The header's view tabs (EXPERIENCE.md › Navigation; the What's mine
- * mockup). A client component only for `usePathname`. Each tab is 14px
- * semibold, centred in a third of the row, so What's mine keeps its place
- * when Board and Planner arrive. The current tab is full white with a
- * straight 3px white underline (only its top corners are rounded, for the
- * focus outline); the rest are white at 72%. On a task's page the tab is
- * present but not current.
+ * mockup). A client component only for `usePathname` and
+ * `useSearchParams`. Each tab is 14px semibold, centred in a third of the
+ * row, so the tabs keep their places when Planner arrives. The current tab is
+ * full white with a straight 3px white underline (only its top corners are
+ * rounded, for the focus outline); the rest are white at 72%. It is the one
+ * whose view `/dashboard` is showing, read as the page reads it (a repeated
+ * `view` is What's mine); on a task's page no tab is current.
  */
 export function DashboardTabs() {
   const pathname = usePathname()
+  const views = useSearchParams().getAll("view")
+  const view = parseDashboardView(views.length === 1 ? views[0] : views)
 
   return (
     <nav aria-label="Dashboard views" className="grid grid-cols-3 gap-1">
       {TABS.map((tab) => {
-        const current = pathname === tab.href
+        const current = pathname === "/dashboard" && view === tab.view
         return (
           <Link
-            key={tab.href}
+            key={tab.view}
             href={tab.href}
             aria-current={current ? "page" : undefined}
             className={cn(
