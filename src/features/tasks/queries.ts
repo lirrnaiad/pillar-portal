@@ -2,10 +2,14 @@ import "server-only"
 
 import { z } from "zod"
 
-import { PRODUCTION_ROLE_LABELS, type ProductionRole } from "@/features/members"
+import {
+  initialsOf,
+  PRODUCTION_ROLE_LABELS,
+  type ProductionRole,
+} from "@/features/members"
 import { createClient } from "@/lib/supabase/server"
 
-import type { SlotState, TaskColumn } from "./status"
+import { isTaskOverdue, type SlotState, type TaskColumn } from "./status"
 
 export type TaskOwnerOption = {
   kind: "section" | "desk"
@@ -19,7 +23,9 @@ export type SlotMemberOption = {
 }
 
 /** Every active member who can fill a slot of that production role. */
-export type SlotMembersByRole = Partial<Record<ProductionRole, SlotMemberOption[]>>
+export type SlotMembersByRole = Partial<
+  Record<ProductionRole, SlotMemberOption[]>
+>
 
 export type TaskFormOptions = {
   /** Every content section, then every desk but Writers (never a task owner). */
@@ -73,8 +79,14 @@ export async function getTaskFormOptions(): Promise<TaskFormOptions> {
 
   const [sectionsResult, desksResult, membersResult] = await Promise.all([
     supabase.from("sections").select("id, name").order("sort_order"),
-    supabase.from("desks").select("id, name, production_role").order("sort_order"),
-    supabase.from("member_directory").select("id, name, positions").order("name"),
+    supabase
+      .from("desks")
+      .select("id, name, production_role")
+      .order("sort_order"),
+    supabase
+      .from("member_directory")
+      .select("id, name, positions")
+      .order("name"),
   ])
 
   if (sectionsResult.error) {
@@ -122,7 +134,9 @@ export async function getTaskFormOptions(): Promise<TaskFormOptions> {
 
     const roles = new Set<ProductionRole>()
     for (const position of parsePositions(member.positions)) {
-      const role = position.desk_id ? roleByDeskId.get(position.desk_id) : undefined
+      const role = position.desk_id
+        ? roleByDeskId.get(position.desk_id)
+        : undefined
       if (role) roles.add(role)
     }
     for (const role of roles) {
@@ -130,7 +144,12 @@ export async function getTaskFormOptions(): Promise<TaskFormOptions> {
     }
   }
 
-  return { owners, slotMembersByRole, allMembers, roleLabels: PRODUCTION_ROLE_LABELS }
+  return {
+    owners,
+    slotMembersByRole,
+    allMembers,
+    roleLabels: PRODUCTION_ROLE_LABELS,
+  }
 }
 
 export type TaskDetailSlot = {
@@ -288,4 +307,193 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     respondableSlotIds: capabilities?.respondable_slot_ids ?? [],
     roleLabels: PRODUCTION_ROLE_LABELS,
   }
+}
+
+export type TaskCardAssignee = {
+  id: string
+  name: string
+  initials: string
+}
+
+/** Everything a task card shows, computed on the server. */
+export type TaskCardData = {
+  id: string
+  title: string
+  ownerName: string
+  /** UTC ISO timestamp; shown in PHT. */
+  dueAt: string
+  column: TaskColumn
+  overdue: boolean
+  /** Any slot on the task, anyone's, is in that state. */
+  hasAwaitingResponse: boolean
+  hasNeedsReassignment: boolean
+  /** Distinct slot members in slot order. */
+  assignees: TaskCardAssignee[]
+}
+
+export type WaitingSlot = {
+  slotId: string
+  roleLabel: string
+  /** From task_capabilities' respondable_slot_ids, and nothing else. */
+  respondable: boolean
+  task: TaskCardData
+}
+
+export type WhatsMine = {
+  /** The viewer's open awaiting slots, one per slot. */
+  waiting: WaitingSlot[]
+  /** Other tasks where the viewer holds an open slot, none also in waiting. */
+  tasks: TaskCardData[]
+}
+
+function byDueThenId(
+  a: { dueAt: string; id: string },
+  b: { dueAt: string; id: string }
+) {
+  const diff = new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()
+  if (diff !== 0) return diff
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+/**
+ * Everything What's mine shows. Which slots are open comes from
+ * my_open_slots() (the one definition, in the database); nothing here
+ * filters by state or column to decide that. Throws on any query error.
+ *
+ * With no open slot it stops there. Otherwise the tasks, every slot on them
+ * and task_capabilities are read together, then the names from
+ * member_directory (never `members`).
+ */
+export async function getWhatsMine(): Promise<WhatsMine> {
+  const supabase = await createClient()
+
+  const openResult = await supabase.rpc("my_open_slots")
+  if (openResult.error) {
+    throw new Error("getWhatsMine: reading my_open_slots failed", {
+      cause: openResult.error,
+    })
+  }
+  const openSlots = openResult.data ?? []
+  if (openSlots.length === 0) return { waiting: [], tasks: [] }
+
+  const taskIds = [...new Set(openSlots.map((slot) => slot.task_id))]
+
+  const [tasksResult, slotsResult, capabilitiesResult] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, title, due_at, column, sections(name), desks(name)")
+      .in("id", taskIds),
+    supabase
+      .from("task_assignments")
+      .select("id, task_id, member_id, state, created_at")
+      .in("task_id", taskIds)
+      .order("created_at")
+      .order("id"),
+    supabase.rpc("task_capabilities", { ids: taskIds }),
+  ])
+
+  if (tasksResult.error) {
+    throw new Error("getWhatsMine: reading tasks failed", {
+      cause: tasksResult.error,
+    })
+  }
+  if (slotsResult.error) {
+    throw new Error("getWhatsMine: reading task_assignments failed", {
+      cause: slotsResult.error,
+    })
+  }
+  if (capabilitiesResult.error) {
+    throw new Error("getWhatsMine: reading task_capabilities failed", {
+      cause: capabilitiesResult.error,
+    })
+  }
+
+  const allSlots = slotsResult.data ?? []
+  const memberIds = [...new Set(allSlots.map((slot) => slot.member_id))]
+  const membersResult = await supabase
+    .from("member_directory")
+    .select("id, name")
+    .in("id", memberIds)
+  if (membersResult.error) {
+    throw new Error("getWhatsMine: reading member_directory failed", {
+      cause: membersResult.error,
+    })
+  }
+
+  const nameById = new Map<string, string>()
+  for (const member of membersResult.data ?? []) {
+    if (member.id !== null && member.name !== null) {
+      nameById.set(member.id, member.name)
+    }
+  }
+
+  const respondable = new Set(
+    (capabilitiesResult.data ?? []).flatMap((row) => row.respondable_slot_ids)
+  )
+
+  const slotsByTask = new Map<string, typeof allSlots>()
+  for (const slot of allSlots) {
+    const list = slotsByTask.get(slot.task_id) ?? []
+    list.push(slot)
+    slotsByTask.set(slot.task_id, list)
+  }
+
+  const now = new Date()
+  const cards = new Map<string, TaskCardData>()
+  for (const task of tasksResult.data ?? []) {
+    const slots = slotsByTask.get(task.id) ?? []
+    const seen = new Set<string>()
+    const assignees: TaskCardAssignee[] = []
+    for (const slot of slots) {
+      if (seen.has(slot.member_id)) continue
+      seen.add(slot.member_id)
+      const name = nameById.get(slot.member_id) ?? FORMER_MEMBER
+      assignees.push({ id: slot.member_id, name, initials: initialsOf(name) })
+    }
+    cards.set(task.id, {
+      id: task.id,
+      title: task.title,
+      ownerName: task.sections?.name ?? task.desks?.name ?? "",
+      dueAt: task.due_at,
+      column: task.column,
+      overdue: isTaskOverdue(task.due_at, task.column, now),
+      hasAwaitingResponse: slots.some(
+        (slot) => slot.state === "awaiting_response"
+      ),
+      hasNeedsReassignment: slots.some(
+        (slot) => slot.state === "needs_reassignment"
+      ),
+      assignees,
+    })
+  }
+
+  const waiting: WaitingSlot[] = []
+  const waitingTaskIds = new Set<string>()
+  for (const slot of openSlots) {
+    if (slot.state !== "awaiting_response") continue
+    const task = cards.get(slot.task_id)
+    if (!task) continue
+    waitingTaskIds.add(task.id)
+    waiting.push({
+      slotId: slot.id,
+      roleLabel: PRODUCTION_ROLE_LABELS[slot.role],
+      respondable: respondable.has(slot.id),
+      task,
+    })
+  }
+  // Slots of one task keep the database's order (created_at, then id). A JS
+  // Date would drop created_at's microseconds, and the slots one create_task
+  // call inserts are often within the same millisecond.
+  const slotRank = new Map(allSlots.map((slot, index) => [slot.id, index]))
+  waiting.sort(
+    (a, b) =>
+      byDueThenId(a.task, b.task) ||
+      (slotRank.get(a.slotId) ?? 0) - (slotRank.get(b.slotId) ?? 0)
+  )
+
+  const tasks = [...cards.values()]
+    .filter((task) => !waitingTaskIds.has(task.id))
+    .sort(byDueThenId)
+
+  return { waiting, tasks }
 }

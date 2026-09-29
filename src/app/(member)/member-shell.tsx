@@ -1,9 +1,12 @@
 import { AppHeader } from "@/components/app-header"
 import { type CurrentMember, MemberMenu } from "@/features/members"
 
+import { DashboardTabs } from "./dashboard-tabs"
+
 /**
- * The member layout's chrome: the app header with the avatar menu, then the
- * page in a single column capped at 640px (EXPERIENCE.md › Responsive).
+ * The member layout's chrome: the app header with the avatar menu and the
+ * view tabs, then the page in a single column capped at 640px
+ * (EXPERIENCE.md › Responsive).
  */
 export function MemberShell({
   member,
@@ -14,7 +17,7 @@ export function MemberShell({
 }) {
   return (
     <>
-      <AppHeader homeHref="/dashboard">
+      <AppHeader homeHref="/dashboard" nav={<DashboardTabs />}>
         <MemberMenu
           name={member.name}
           extraLinks={

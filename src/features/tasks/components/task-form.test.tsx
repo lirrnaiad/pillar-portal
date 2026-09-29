@@ -117,6 +117,31 @@ describe("TaskForm", () => {
     expect(await axeViolations(container)).toEqual([])
   })
 
+  it("shows no owner error after choosing a desk, from a fresh form or after a section", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await chooseOption(user, "Owner", "Layout")
+    expect(screen.queryByText("Choose one owner")).not.toBeInTheDocument()
+
+    await chooseOption(user, "Owner", "News")
+    await chooseOption(user, "Owner", "Layout")
+    expect(screen.queryByText("Choose one owner")).not.toBeInTheDocument()
+  })
+
+  it("clears the owner error a submit left once an owner is chosen", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.click(screen.getByRole("button", { name: "Create task" }))
+    expect(await screen.findByText("Choose one owner")).toBeInTheDocument()
+
+    await chooseOption(user, "Owner", "Layout")
+    await waitFor(() =>
+      expect(screen.queryByText("Choose one owner")).not.toBeInTheDocument()
+    )
+  })
+
   it("offers exactly the owners it's given, and nothing else (Writers is never among them)", async () => {
     const user = userEvent.setup()
     renderForm()

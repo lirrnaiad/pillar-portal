@@ -36,3 +36,15 @@ export const SLOT_STATE_FAMILIES: Record<SlotState, StatusFamily> = {
   on_it: "none",
   needs_reassignment: "attention",
 }
+
+/**
+ * Overdue (EXPERIENCE.md › Terms): `due_at` is past and the task isn't Done.
+ * Status display only; it decides no action.
+ */
+export function isTaskOverdue(
+  dueAt: string,
+  column: TaskColumn,
+  now: Date = new Date()
+): boolean {
+  return column !== "done" && new Date(dueAt).getTime() < now.getTime()
+}

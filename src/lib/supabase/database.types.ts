@@ -423,6 +423,24 @@ export type Database = {
         }
         Returns: undefined
       }
+      my_open_slots: {
+        Args: never
+        Returns: {
+          created_at: string
+          id: string
+          member_id: string
+          role: Database["public"]["Enums"]["production_role"]
+          state: Database["public"]["Enums"]["slot_state"]
+          task_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "task_assignments"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       respond_to_slot: {
         Args: {
           reason?: string

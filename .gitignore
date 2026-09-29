@@ -51,6 +51,7 @@ src/lib/supabase/database.types.ts.tmp
 _bmad/
 _bmad-output/
 .claude/
+.agents/
 docs/
 docs/private/
 
