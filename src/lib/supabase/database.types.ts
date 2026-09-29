@@ -54,6 +54,35 @@ export type Database = {
           },
         ]
       }
+      assignment_reasons: {
+        Row: {
+          assignment_id: string
+          created_at: string
+          reason: string
+          updated_at: string
+        }
+        Insert: {
+          assignment_id: string
+          created_at?: string
+          reason: string
+          updated_at?: string
+        }
+        Update: {
+          assignment_id?: string
+          created_at?: string
+          reason?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assignment_reasons_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: true
+            referencedRelation: "task_assignments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       desks: {
         Row: {
           id: string
@@ -386,6 +415,29 @@ export type Database = {
           title: string
         }
         Returns: string
+      }
+      move_task: {
+        Args: {
+          task_id: string
+          to_column: Database["public"]["Enums"]["task_column"]
+        }
+        Returns: undefined
+      }
+      respond_to_slot: {
+        Args: {
+          reason?: string
+          response: Database["public"]["Enums"]["slot_state"]
+          slot_id: string
+        }
+        Returns: undefined
+      }
+      task_capabilities: {
+        Args: { ids: string[] }
+        Returns: {
+          allowed_moves: Database["public"]["Enums"]["task_column"][]
+          respondable_slot_ids: string[]
+          task_id: string
+        }[]
       }
     }
     Enums: {

@@ -3,6 +3,8 @@ import { z } from "zod"
 import { Constants } from "@/lib/supabase/database.types"
 import { DATETIME_LOCAL_PATTERN } from "@/lib/time"
 
+import { TASK_COLUMNS } from "./status"
+
 // The production_role enum's members, straight from the generated database
 // types (Constants, not Enums<...>, since z.enum needs a runtime array, not
 // just the type). Not imported from @/features/members: that barrel also
@@ -83,3 +85,33 @@ export const taskCreateSchema = z
 
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>
 export type TaskSlotInput = z.infer<typeof slotSchema>
+
+// Mirrors assignment_reasons_reason_format (<ts>_tasks_responses_and_moves.sql).
+const REASON_MAX = 280
+
+/**
+ * A slot response (I'm on it / Can't take this). The reason is trimmed,
+ * capped like the database's own CHECK, and a blank one becomes null;
+ * respondToSlotAction sends it only with `needs_reassignment`.
+ */
+export const slotRespondSchema = z.object({
+  slotId: z.uuid(),
+  response: z.enum(["on_it", "needs_reassignment"]),
+  reason: z
+    .string()
+    .trim()
+    .max(REASON_MAX, {
+      message: `Keep the reason under ${REASON_MAX} characters`,
+    })
+    .nullish()
+    .transform((reason) => (reason ? reason : null)),
+})
+
+/** A column move ("Move to…"). */
+export const taskMoveSchema = z.object({
+  taskId: z.uuid(),
+  toColumn: z.enum(TASK_COLUMNS),
+})
+
+export type SlotRespondInput = z.input<typeof slotRespondSchema>
+export type TaskMoveInput = z.input<typeof taskMoveSchema>

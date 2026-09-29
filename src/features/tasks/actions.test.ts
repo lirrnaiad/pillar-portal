@@ -17,7 +17,7 @@ vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
 
-import { createTaskAction } from "./actions"
+import { createTaskAction, moveTaskAction, respondToSlotAction } from "./actions"
 
 const MEMBER_ID = "00000000-0000-4000-8000-000000000001"
 
@@ -115,6 +115,144 @@ describe("createTaskAction", () => {
   })
 })
 
+const SLOT_ID = "00000000-0000-4000-8000-000000000011"
+const TASK_ID = "00000000-0000-4000-8000-000000000021"
+
+describe("respondToSlotAction", () => {
+  it("rejects invalid input without calling the database", async () => {
+    const result = await respondToSlotAction({ slotId: "abc", response: "on_it" })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it("answers I'm on it without a reason, even if one is passed, then revalidates the dashboard", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    const result = await respondToSlotAction({
+      slotId: SLOT_ID,
+      response: "on_it",
+      reason: "Ignored",
+    })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("respond_to_slot", {
+      slot_id: SLOT_ID,
+      response: "on_it",
+    })
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(result).toEqual({ ok: true, data: { state: "on_it" } })
+  })
+
+  it("sends the trimmed reason with needs_reassignment", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    const result = await respondToSlotAction({
+      slotId: SLOT_ID,
+      response: "needs_reassignment",
+      reason: "  Exams all week  ",
+    })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("respond_to_slot", {
+      slot_id: SLOT_ID,
+      response: "needs_reassignment",
+      reason: "Exams all week",
+    })
+    expect(result).toEqual({ ok: true, data: { state: "needs_reassignment" } })
+  })
+
+  it("sends no reason when it is blank", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    await respondToSlotAction({
+      slotId: SLOT_ID,
+      response: "needs_reassignment",
+      reason: "   ",
+    })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("respond_to_slot", {
+      slot_id: SLOT_ID,
+      response: "needs_reassignment",
+    })
+  })
+
+  it("rejects a reason over 280 characters without calling the database", async () => {
+    const result = await respondToSlotAction({
+      slotId: SLOT_ID,
+      response: "needs_reassignment",
+      reason: "x".repeat(281),
+    })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it.each(["auth.not_active", "tasks.not_found", "tasks.not_allowed"])(
+    "maps the database's %s error straight through, without revalidating",
+    async (message) => {
+      rpc.mockResolvedValue({ data: null, error: { message } })
+
+      const result = await respondToSlotAction({ slotId: SLOT_ID, response: "on_it" })
+
+      expect(result).toEqual({ ok: false, code: message })
+      expect(revalidatePath).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    "tasks.not_admin",
+    'new row for relation "assignment_reasons" violates check constraint',
+    "permission denied for function respond_to_slot",
+  ])("maps any other error (%s) to tasks.save_failed", async (message) => {
+    rpc.mockResolvedValue({ data: null, error: { message } })
+
+    const result = await respondToSlotAction({ slotId: SLOT_ID, response: "on_it" })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+  })
+})
+
+describe("moveTaskAction", () => {
+  it("rejects invalid input without calling the database", async () => {
+    const result = await moveTaskAction({ taskId: TASK_ID, toColumn: "archived" })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it("calls move_task, then revalidates the dashboard and returns the new column", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    const result = await moveTaskAction({ taskId: TASK_ID, toColumn: "for_review" })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("move_task", {
+      task_id: TASK_ID,
+      to_column: "for_review",
+    })
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(result).toEqual({ ok: true, data: { column: "for_review" } })
+  })
+
+  it.each(["auth.not_active", "tasks.not_found", "tasks.not_allowed"])(
+    "maps the database's %s error straight through, without revalidating",
+    async (message) => {
+      rpc.mockResolvedValue({ data: null, error: { message } })
+
+      const result = await moveTaskAction({ taskId: TASK_ID, toColumn: "doing" })
+
+      expect(result).toEqual({ ok: false, code: message })
+      expect(revalidatePath).not.toHaveBeenCalled()
+    }
+  )
+
+  it("maps any other error to tasks.save_failed", async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: "fetch failed" } })
+
+    const result = await moveTaskAction({ taskId: TASK_ID, toColumn: "doing" })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+  })
+})
+
 describe("error copy", () => {
   it("maps each code to its copy", async () => {
     const { TASK_ERROR_COPY } = await import("./errors")
@@ -123,6 +261,9 @@ describe("error copy", () => {
       "tasks.not_admin": "Only the Editorial Board can create tasks.",
       "tasks.duplicate_slot": "The same member already has that role — remove one.",
       "tasks.create_failed": "Couldn't create the task. Try again.",
+      "tasks.not_found": "This task was deleted or the link is wrong.",
+      "tasks.not_allowed": "Couldn't save — try again.",
+      "tasks.save_failed": "Couldn't save — try again.",
     })
   })
 })
