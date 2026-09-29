@@ -74,6 +74,7 @@ export function TaskForm({ options }: { options: TaskFormOptions }) {
     handleSubmit,
     control,
     setValue,
+    trigger,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<TaskCreateInput>({
@@ -99,10 +100,12 @@ export function TaskForm({ options }: { options: TaskFormOptions }) {
     const sep = value.indexOf(":")
     const kind = value.slice(0, sep)
     const id = value.slice(sep + 1)
-    setValue("owningSectionId", kind === "section" ? id : null, {
-      shouldValidate: true,
-    })
-    setValue("owningDeskId", kind === "desk" ? id : null, { shouldValidate: true })
+    // Set both, then check both. Validating on each setValue would check
+    // "exactly one owner" between the two, while both are null, and pin that
+    // error on the owner field; setting the desk only re-checks the desk.
+    setValue("owningSectionId", kind === "section" ? id : null)
+    setValue("owningDeskId", kind === "desk" ? id : null)
+    void trigger(["owningSectionId", "owningDeskId"])
   }
 
   async function onSubmit(data: TaskCreateInput) {

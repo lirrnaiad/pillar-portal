@@ -43,6 +43,9 @@ describe("DashboardTabs", () => {
     const link = screen.getByRole("link", { name: "What's mine" })
     expect(link).toHaveAttribute("aria-current", "page")
     expect(link).toHaveClass("border-white", "text-white")
+    // The mockup's tab: 14px semibold, centred, with a straight underline.
+    expect(link).toHaveClass("text-sm", "font-semibold", "justify-center")
+    expect(link).not.toHaveClass("rounded-sm")
   })
 
   it("is present but not current on a task's page", () => {
@@ -51,7 +54,8 @@ describe("DashboardTabs", () => {
 
     const link = screen.getByRole("link", { name: "What's mine" })
     expect(link).not.toHaveAttribute("aria-current")
-    expect(link).toHaveClass("min-h-11", "text-white/75")
+    expect(link).toHaveClass("min-h-11", "text-white/72")
+    expect(link).not.toHaveClass("border-white")
   })
 
   it("has no axe violations", async () => {
