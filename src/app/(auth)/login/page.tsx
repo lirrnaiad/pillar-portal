@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 }
 
 // Prototype sign-in (AD-7): persona buttons while PROTOTYPE_PERSONAS is on.
-// Google and Discord replace them in Story 2.1.
+// Story 2.1 adds Sign in with Google.
 //
 // `next` is where the visitor was going; src/proxy.ts sets it when it sends a
 // signed-out visitor here. An active member is sent straight there. Pending

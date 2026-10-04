@@ -165,7 +165,7 @@ max_indexes = 5
 # http://localhost:3000 (not 127.0.0.1, and not over https).
 # - Self sign-up is off: every account is a prototype persona or a seeded
 #   member (supabase/seed.sql, scripts/staging-personas.mjs). Story 2.1 turns
-#   it back on for Google and Discord. `[auth.email] enable_signup` stays true,
+#   it back on for Google. `[auth.email] enable_signup` stays true,
 #   because false there also turns off password sign-in, which personas use.
 # - Passwords are at least 16 characters, like PROTOTYPE_PERSONA_PASSWORD.
 # - MFA stays off until admin two-factor (Story 5.1).
