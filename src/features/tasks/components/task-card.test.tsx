@@ -71,6 +71,15 @@ describe("TaskCard", () => {
     ).toBeInTheDocument()
   })
 
+  it("titles the card h4 when asked, for cards under an h3", () => {
+    render(<TaskCard task={TASK} headingLevel={4} />)
+
+    expect(
+      screen.getByRole("heading", { level: 4, name: "Lay out the spread" })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull()
+  })
+
   it("shows the owner, the PHT due date and the column with its label", () => {
     render(<TaskCard task={TASK} />)
 

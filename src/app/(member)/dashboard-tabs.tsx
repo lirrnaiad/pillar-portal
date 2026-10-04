@@ -8,22 +8,23 @@ import { cn } from "@/lib/utils"
 
 import { parseDashboardView, type DashboardView } from "./dashboard-views"
 
-// What's mine and the Board; Planner joins in Story 1.9. Imports nothing from
-// @/features, so the header stays light.
+// What's mine · Board · Planner. Imports nothing from @/features, so the
+// header stays light.
 const TABS: { label: string; href: string; view: DashboardView }[] = [
   { label: "What's mine", href: "/dashboard", view: "whats-mine" },
   { label: "Board", href: "/dashboard?view=board", view: "board" },
+  { label: "Planner", href: "/dashboard?view=planner", view: "planner" },
 ]
 
 /**
  * The header's view tabs (EXPERIENCE.md › Navigation; the What's mine
  * mockup). A client component only for `usePathname` and
  * `useSearchParams`. Each tab is 14px semibold, centred in a third of the
- * row, so the tabs keep their places when Planner arrives. The current tab is
- * full white with a straight 3px white underline (only its top corners are
- * rounded, for the focus outline); the rest are white at 72%. It is the one
- * whose view `/dashboard` is showing, read as the page reads it (a repeated
- * `view` is What's mine); on a task's page no tab is current.
+ * row. The current tab is full white with a straight 3px white underline
+ * (only its top corners are rounded, for the focus outline); the rest are
+ * white at 72%. It is the one whose view `/dashboard` is showing, read as the
+ * page reads it (a repeated `view` is What's mine); on a task's page no tab
+ * is current.
  */
 export function DashboardTabs() {
   const pathname = usePathname()

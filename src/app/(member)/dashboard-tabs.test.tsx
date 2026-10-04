@@ -78,10 +78,48 @@ describe("DashboardTabs", () => {
     expect(mine).toHaveClass("text-white/72")
   })
 
+  it("reads What's mine · Board · Planner, in that order", () => {
+    usePathname.mockReturnValue("/dashboard")
+    render(<DashboardTabs />)
+
+    const nav = screen.getByRole("navigation", { name: "Dashboard views" })
+    expect(
+      [...nav.querySelectorAll("a")].map((link) => link.textContent)
+    ).toEqual(["What's mine", "Board", "Planner"])
+  })
+
+  it("links Planner to /dashboard?view=planner", () => {
+    usePathname.mockReturnValue("/dashboard")
+    render(<DashboardTabs />)
+
+    expect(screen.getByRole("link", { name: "Planner" })).toHaveAttribute(
+      "href",
+      "/dashboard?view=planner"
+    )
+  })
+
+  it("marks Planner current, and no other tab, on /dashboard?view=planner", () => {
+    usePathname.mockReturnValue("/dashboard")
+    useSearchParams.mockReturnValue(
+      new URLSearchParams("view=planner&month=2026-11&scope=home")
+    )
+    render(<DashboardTabs />)
+
+    const planner = screen.getByRole("link", { name: "Planner" })
+    expect(planner).toHaveAttribute("aria-current", "page")
+    expect(planner).toHaveClass("border-white", "text-white")
+    for (const name of ["What's mine", "Board"]) {
+      const link = screen.getByRole("link", { name })
+      expect(link).not.toHaveAttribute("aria-current")
+      expect(link).toHaveClass("text-white/72")
+    }
+  })
+
   // Read as the page reads it: a repeated view renders What's mine.
   it.each([
     ["an unknown view", "view=nope"],
     ["a repeated view", "view=board&view=board"],
+    ["a repeated planner view", "view=planner&view=planner"],
   ])("keeps What's mine current for %s", (_label, search) => {
     usePathname.mockReturnValue("/dashboard")
     useSearchParams.mockReturnValue(new URLSearchParams(search))
@@ -91,20 +129,25 @@ describe("DashboardTabs", () => {
       "aria-current",
       "page"
     )
-    expect(screen.getByRole("link", { name: "Board" })).not.toHaveAttribute(
-      "aria-current"
-    )
+    for (const name of ["Board", "Planner"]) {
+      expect(screen.getByRole("link", { name })).not.toHaveAttribute(
+        "aria-current"
+      )
+    }
   })
 
   it("is present but not current on a task's page", () => {
     usePathname.mockReturnValue("/dashboard/tasks/abc")
+    useSearchParams.mockReturnValue(new URLSearchParams("view=planner"))
     render(<DashboardTabs />)
 
     const link = screen.getByRole("link", { name: "What's mine" })
     expect(link).not.toHaveAttribute("aria-current")
-    expect(screen.getByRole("link", { name: "Board" })).not.toHaveAttribute(
-      "aria-current"
-    )
+    for (const name of ["Board", "Planner"]) {
+      expect(screen.getByRole("link", { name })).not.toHaveAttribute(
+        "aria-current"
+      )
+    }
     expect(link).toHaveClass("min-h-11", "text-white/72")
     expect(link).not.toHaveClass("border-white")
   })
