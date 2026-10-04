@@ -18,6 +18,10 @@ export {
 } from "./board"
 export type { OwnerFilter } from "./board"
 export { BoardOwnerFilter } from "./components/board-owner-filter"
+export { PlannerChip } from "./components/planner-chip"
+export { PlannerDayList } from "./components/planner-day-list"
+export { PlannerGrid } from "./components/planner-grid"
+export { PlannerScopeToggle } from "./components/planner-scope-toggle"
 export { TaskBoard } from "./components/task-board"
 export { TaskChangesRefresher } from "./components/task-changes-refresher"
 export { TaskDetailView } from "./components/task-detail-view"
@@ -26,8 +30,19 @@ export { WhatsMineTasks } from "./components/whats-mine-tasks"
 export { TASK_ERROR_COPY, taskErrorMessage } from "./errors"
 export type { TaskErrorCode } from "./errors"
 export {
+  deadlineCount,
+  parseIncludeScope,
+  plannerChipLabel,
+  plannerChipStatus,
+  plannerHref,
+  plannerScopeLabel,
+  tasksByDay,
+} from "./planner"
+export type { PlannerChipStatusKind, PlannerScope } from "./planner"
+export {
   getBoard,
   getBoardOwners,
+  getPlanner,
   getTaskDetail,
   getTaskFormOptions,
   getWhatsMine,

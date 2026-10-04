@@ -9,8 +9,10 @@ import {
   type ProductionRole,
 } from "@/features/members"
 import { createClient } from "@/lib/supabase/server"
+import { phtMonthBounds } from "@/lib/time"
 
 import type { OwnerFilter, TaskOwnerOption } from "./board"
+import type { PlannerScope } from "./planner"
 import { isTaskOverdue, type SlotState, type TaskColumn } from "./status"
 
 export type { TaskOwnerOption }
@@ -564,6 +566,44 @@ export type BoardCard = TaskCardData & {
   allowedMoves: TaskColumn[]
 }
 
+type ServerClient = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Tasks as card rows, the Board's and the Planner's one select: each with its
+ * owner's name and its slots embedded in slot order (created_at, then id),
+ * the tasks by due date then id.
+ */
+function taskCardsQuery(supabase: ServerClient) {
+  return supabase
+    .from("tasks")
+    .select(
+      "id, title, due_at, column, sections(name), desks(name), task_assignments(member_id, state)"
+    )
+    .order("due_at")
+    .order("id")
+    .order("created_at", { referencedTable: "task_assignments" })
+    .order("id", { referencedTable: "task_assignments" })
+}
+
+type TaskCardsQuery = ReturnType<typeof taskCardsQuery>
+
+/** Narrows a card query to the tasks an owner filter names. */
+function withOwnerFilter(
+  query: TaskCardsQuery,
+  filter: OwnerFilter
+): TaskCardsQuery {
+  switch (filter.kind) {
+    case "section":
+      return query.eq("owning_section_id", filter.id)
+    case "desk":
+      return query.eq("owning_desk_id", filter.id)
+    case "articles":
+      return query.not("owning_section_id", "is", null)
+    case "all":
+      return query
+  }
+}
+
 /**
  * Every task the filter names, as cards ordered by due date then id. The
  * slots come embedded in the tasks query (a Board can hold hundreds of
@@ -576,30 +616,7 @@ export type BoardCard = TaskCardData & {
 export async function getBoard(filter: OwnerFilter): Promise<BoardCard[]> {
   const supabase = await createClient()
 
-  let query = supabase
-    .from("tasks")
-    .select(
-      "id, title, due_at, column, sections(name), desks(name), task_assignments(member_id, state)"
-    )
-    .order("due_at")
-    .order("id")
-    .order("created_at", { referencedTable: "task_assignments" })
-    .order("id", { referencedTable: "task_assignments" })
-  switch (filter.kind) {
-    case "section":
-      query = query.eq("owning_section_id", filter.id)
-      break
-    case "desk":
-      query = query.eq("owning_desk_id", filter.id)
-      break
-    case "articles":
-      query = query.not("owning_section_id", "is", null)
-      break
-    case "all":
-      break
-  }
-
-  const tasksResult = await query
+  const tasksResult = await withOwnerFilter(taskCardsQuery(supabase), filter)
   if (tasksResult.error) {
     throw new Error("getBoard: reading tasks failed", {
       cause: tasksResult.error,
@@ -636,4 +653,83 @@ export async function getBoard(filter: OwnerFilter): Promise<BoardCard[]> {
     ...toTaskCard(task, task.task_assignments, nameById, now),
     allowedMoves: movesByTask.get(task.id) ?? [],
   }))
+}
+
+/**
+ * The Planner's month (`YYYY-MM`, a Manila month): the tasks where the
+ * viewer holds an open slot, plus, when `scope` is given, every task that
+ * scope owns (Done included), each due inside the month and shown once,
+ * ordered by due date then id. Which slots are open comes from
+ * my_open_slots() alone, so the viewer's Done and handed-back tasks drop off
+ * unless the scope brings them back.
+ *
+ * The two task reads share the Board's select and ordering and the month
+ * window. The scope's needs nothing from my_open_slots, so it runs alongside
+ * it; mine follows, as an `.in()` of task ids, which is fine here: a
+ * member's open slots are few, unlike the Board's tasks. With no
+ * tasks it stops there; otherwise the names come from the whole
+ * member_directory (never `members`), as on the Board. No
+ * task_capabilities: the Planner moves nothing. Throws on any query error.
+ */
+export async function getPlanner(
+  month: string,
+  scope: PlannerScope | null
+): Promise<TaskCardData[]> {
+  const { start, end } = phtMonthBounds(month)
+  const supabase = await createClient()
+
+  const monthTasks = () =>
+    taskCardsQuery(supabase)
+      .gte("due_at", start.toISOString())
+      .lt("due_at", end.toISOString())
+  const none = { data: [], error: null }
+
+  const [openResult, scopeResult] = await Promise.all([
+    supabase.rpc("my_open_slots"),
+    scope ? withOwnerFilter(monthTasks(), scope) : none,
+  ])
+  if (openResult.error) {
+    throw new Error("getPlanner: reading my_open_slots failed", {
+      cause: openResult.error,
+    })
+  }
+  const myTaskIds = [
+    ...new Set((openResult.data ?? []).map((slot) => slot.task_id)),
+  ]
+
+  const mineResult =
+    myTaskIds.length > 0 ? await monthTasks().in("id", myTaskIds) : none
+  if (mineResult.error) {
+    throw new Error("getPlanner: reading my tasks failed", {
+      cause: mineResult.error,
+    })
+  }
+  if (scopeResult.error) {
+    throw new Error("getPlanner: reading the scope's tasks failed", {
+      cause: scopeResult.error,
+    })
+  }
+
+  const tasks = new Map(
+    [...(mineResult.data ?? []), ...(scopeResult.data ?? [])].map((task) => [
+      task.id,
+      task,
+    ])
+  )
+  if (tasks.size === 0) return []
+
+  const membersResult = await supabase
+    .from("member_directory")
+    .select("id, name")
+  if (membersResult.error) {
+    throw new Error("getPlanner: reading member_directory failed", {
+      cause: membersResult.error,
+    })
+  }
+
+  const nameById = nameMap(membersResult.data ?? [])
+  const now = new Date()
+  return [...tasks.values()]
+    .map((task) => toTaskCard(task, task.task_assignments, nameById, now))
+    .sort(byDueThenId)
 }

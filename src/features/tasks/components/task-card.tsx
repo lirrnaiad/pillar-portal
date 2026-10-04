@@ -42,18 +42,25 @@ export function TaskCard({
   task,
   children,
   titleLinkProps,
+  headingLevel = 3,
 }: {
   task: TaskCardData
   children?: React.ReactNode
   titleLinkProps?: TitleLinkProps
+  /**
+   * The title's heading level: 3 under a page's h2 sections (What's mine,
+   * the Board), 4 where the cards sit under h3s (the Planner's day list).
+   */
+  headingLevel?: 3 | 4
 }) {
+  const Heading = headingLevel === 4 ? "h4" : "h3"
   const shown = task.assignees.slice(0, MAX_AVATARS)
   const extra = task.assignees.length - shown.length
 
   return (
     <article className="rounded-lg bg-card p-card-padding shadow-card has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring">
       <div className="relative flex flex-col gap-2">
-        <h3 className="font-semibold break-words">
+        <Heading className="font-semibold break-words">
           <Link
             href={`/dashboard/tasks/${task.id}`}
             className="after:absolute after:inset-0 after:rounded-lg focus-visible:outline-hidden"
@@ -61,7 +68,7 @@ export function TaskCard({
           >
             {task.title}
           </Link>
-        </h3>
+        </Heading>
 
         {(task.hasAwaitingResponse ||
           task.hasNeedsReassignment ||
