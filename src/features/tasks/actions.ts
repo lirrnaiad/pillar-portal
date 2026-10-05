@@ -7,7 +7,12 @@ import type { Database } from "@/lib/supabase/database.types"
 import { phtInputToUtc } from "@/lib/time"
 
 import type { TaskErrorCode } from "./errors"
-import { slotRespondSchema, taskCreateSchema, taskMoveSchema } from "./schemas"
+import {
+  slotHandBackSchema,
+  slotRespondSchema,
+  taskCreateSchema,
+  taskMoveSchema,
+} from "./schemas"
 import type { SlotState, TaskColumn } from "./status"
 
 // AD-3's result shape, shared by every action in the slice.
@@ -17,6 +22,10 @@ export type CreateTaskState = { ok: true; data: { id: string } } | ActionError
 
 export type RespondToSlotState =
   | { ok: true; data: { state: SlotState } }
+  | ActionError
+
+export type HandBackSlotState =
+  | { ok: true; data: { state: "needs_reassignment" } }
   | ActionError
 
 export type MoveTaskState =
@@ -139,6 +148,37 @@ export async function respondToSlotAction(
 
   revalidatePath("/dashboard", "layout")
   return { ok: true, data: { state: response } }
+}
+
+/**
+ * Hands the caller's own On it slot back (AD-3, AD-4), with an optional
+ * reason. hand_back_slot decides whether the caller may; this only parses,
+ * calls it, maps the error and revalidates.
+ */
+export async function handBackSlotAction(
+  input: unknown
+): Promise<HandBackSlotState> {
+  const parsed = slotHandBackSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { slotId, reason } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("hand_back_slot", {
+    slot_id: slotId,
+    ...(reason !== null ? { reason } : {}),
+  })
+
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed"),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  return { ok: true, data: { state: "needs_reassignment" } }
 }
 
 /**

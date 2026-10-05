@@ -7,6 +7,7 @@ import { buildCalendarEvent, googleCalendarUrl } from "../calendar"
 import type { TaskDetail } from "../queries"
 import { SLOT_STATE_FAMILIES, SLOT_STATE_LABELS } from "../status"
 import { AddToCalendarMenu } from "./calendar-menu"
+import { HandBack } from "./hand-back"
 import { SlotResponse } from "./slot-response"
 import { TaskColumnControl } from "./task-column-control"
 
@@ -15,12 +16,14 @@ const DUE_FORMAT = "EEE, MMM d, yyyy 'at' h:mm a"
 /**
  * Task detail (EXPERIENCE.md › Task detail): title, column, owner, due date
  * in PHT, reference link, description, then one row per slot. Which actions
- * appear comes only from `task.allowedMoves` and `task.respondableSlotIds`
+ * appear comes only from `task.allowedMoves`, `task.respondableSlotIds` and `task.handBackSlotIds`
  * (task_capabilities, AD-4); nothing here looks at roles, positions or who
  * holds a slot.
  */
 export function TaskDetailView({ task }: { task: TaskDetail }) {
   const respondable = new Set(task.respondableSlotIds)
+  const handBackable = new Set(task.handBackSlotIds)
+  const handBackSlots = task.slots.filter((slot) => handBackable.has(slot.id))
   const googleUrl = googleCalendarUrl(
     buildCalendarEvent(
       {
@@ -47,6 +50,22 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
           allowedMoves={task.allowedMoves}
         />
       </div>
+
+      {handBackSlots.length > 0 && (
+        <div className="mt-3 flex flex-col gap-3">
+          {handBackSlots.map((slot) => (
+              <HandBack
+                key={slot.id}
+                slotId={slot.id}
+                slotLabel={task.roleLabels[slot.role]}
+                rowId={`slot-${slot.id}`}
+              />
+            ))}
+          <p className="text-sm text-muted-foreground">
+            Can&apos;t take this? Hand it back — your head will reassign it.
+          </p>
+        </div>
+      )}
 
       <div className="mt-3">
         <AddToCalendarMenu taskId={task.id} googleUrl={googleUrl} />

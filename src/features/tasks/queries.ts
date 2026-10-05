@@ -223,6 +223,8 @@ export type TaskDetail = {
    */
   allowedMoves: TaskColumn[]
   respondableSlotIds: string[]
+  /** The slots it may hand back (On it, its own), from task_capabilities. */
+  handBackSlotIds: string[]
   /** Resolved here for the same client-bundle reason as TaskFormOptions's. */
   roleLabels: Record<ProductionRole, string>
 }
@@ -343,6 +345,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     })),
     allowedMoves: capabilities?.allowed_moves ?? [],
     respondableSlotIds: capabilities?.respondable_slot_ids ?? [],
+    handBackSlotIds: capabilities?.hand_back_slot_ids ?? [],
     roleLabels: PRODUCTION_ROLE_LABELS,
   }
 }

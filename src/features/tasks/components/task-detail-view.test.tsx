@@ -9,7 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { TaskDetail } from "../queries"
 import { TaskDetailView } from "./task-detail-view"
 
+const { handBackSlotAction } = vi.hoisted(() => ({
+  handBackSlotAction: vi.fn(),
+}))
 vi.mock("../actions", () => ({
+  handBackSlotAction,
   moveTaskAction: vi.fn(),
   respondToSlotAction: vi.fn(),
 }))
@@ -79,6 +83,7 @@ const TASK: TaskDetail = {
   ],
   allowedMoves: ["to_do", "for_review"],
   respondableSlotIds: [CARTOON_SLOT],
+  handBackSlotIds: [],
   roleLabels: {
     writer: "Writer",
     layout_artist: "Layout Artist",
@@ -222,10 +227,65 @@ describe("TaskDetailView", () => {
     ).toEqual(["To Do", "For Review"])
   })
 
+  it("offers Hand back beside the move control only for slots in handBackSlotIds", () => {
+    render(
+      <TaskDetailView
+        task={{ ...TASK, respondableSlotIds: [], handBackSlotIds: [LAYOUT_SLOT] }}
+      />
+    )
+
+    const button = screen.getByRole("button", { name: /^Hand back/ })
+    expect(button).toHaveAccessibleName(/Hand back.*Layout Artist/)
+    expect(button).toHaveAttribute("data-variant", "outline")
+    expect(
+      screen.getByText(
+        "Can't take this? Hand it back — your head will reassign it."
+      )
+    ).toBeInTheDocument()
+  })
+
+  it("sends the id of the slot whose Hand back was used", async () => {
+    const user = userEvent.setup()
+    handBackSlotAction.mockResolvedValue({
+      ok: true,
+      data: { state: "needs_reassignment" },
+    })
+    render(
+      <TaskDetailView
+        task={{
+          ...TASK,
+          respondableSlotIds: [],
+          handBackSlotIds: [LAYOUT_SLOT, CARTOON_SLOT],
+        }}
+      />
+    )
+
+    await user.click(
+      screen.getByRole("button", { name: /^Hand back.*Cartoonist/ })
+    )
+    await user.click(screen.getByRole("button", { name: "Hand it back" }))
+
+    expect(handBackSlotAction).toHaveBeenCalledExactlyOnceWith({
+      slotId: CARTOON_SLOT,
+      reason: "",
+    })
+    expect(
+      screen.getAllByText(
+        "Can't take this? Hand it back — your head will reassign it."
+      )
+    ).toHaveLength(1)
+  })
+
+  it("shows no Hand back when nothing may be handed back", () => {
+    render(<TaskDetailView task={TASK} />)
+
+    expect(screen.queryByRole("button", { name: /^Hand back/ })).toBeNull()
+  })
+
   it("offers no move control and no respond buttons when task_capabilities allows nothing", () => {
     render(
       <TaskDetailView
-        task={{ ...TASK, allowedMoves: [], respondableSlotIds: [] }}
+        task={{ ...TASK, allowedMoves: [], respondableSlotIds: [], handBackSlotIds: [] }}
       />
     )
 

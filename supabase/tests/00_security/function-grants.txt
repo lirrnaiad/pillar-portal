@@ -41,3 +41,7 @@ authenticated public.my_open_slots()
 # tasks_realtime: who may join the private task-changes channel (called from
 # the realtime.messages policy, which runs as the joining caller)
 authenticated private.can_join_task_changes()
+
+# tasks_hand_back: the on_it -> needs_reassignment edge and its command
+authenticated private.can_hand_back_slot(uuid)
+authenticated public.hand_back_slot(uuid, text)

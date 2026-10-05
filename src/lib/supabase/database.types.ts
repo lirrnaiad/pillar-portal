@@ -416,6 +416,10 @@ export type Database = {
         }
         Returns: string
       }
+      hand_back_slot: {
+        Args: { reason?: string; slot_id: string }
+        Returns: undefined
+      }
       move_task: {
         Args: {
           task_id: string
@@ -453,6 +457,7 @@ export type Database = {
         Args: { ids: string[] }
         Returns: {
           allowed_moves: Database["public"]["Enums"]["task_column"][]
+          hand_back_slot_ids: string[]
           respondable_slot_ids: string[]
           task_id: string
         }[]
