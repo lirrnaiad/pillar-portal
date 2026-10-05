@@ -2,11 +2,13 @@
 // from here only.
 export {
   createTaskAction,
+  handBackSlotAction,
   moveTaskAction,
   respondToSlotAction,
 } from "./actions"
 export type {
   CreateTaskState,
+  HandBackSlotState,
   MoveTaskState,
   RespondToSlotState,
 } from "./actions"
@@ -71,11 +73,13 @@ export type {
 } from "./queries"
 export {
   PRODUCTION_ROLES,
+  slotHandBackSchema,
   slotRespondSchema,
   taskCreateSchema,
   taskMoveSchema,
 } from "./schemas"
 export type {
+  SlotHandBackInput,
   SlotRespondInput,
   TaskCreateInput,
   TaskMoveInput,

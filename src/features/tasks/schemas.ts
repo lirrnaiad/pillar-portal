@@ -107,6 +107,12 @@ export const slotRespondSchema = z.object({
     .transform((reason) => (reason ? reason : null)),
 })
 
+/** Hand back (Story 1.11): the caller's own On it slot, optional reason. */
+export const slotHandBackSchema = z.object({
+  slotId: z.uuid(),
+  reason: slotRespondSchema.shape.reason,
+})
+
 /** A column move ("Move to…"). */
 export const taskMoveSchema = z.object({
   taskId: z.uuid(),
@@ -114,4 +120,5 @@ export const taskMoveSchema = z.object({
 })
 
 export type SlotRespondInput = z.input<typeof slotRespondSchema>
+export type SlotHandBackInput = z.input<typeof slotHandBackSchema>
 export type TaskMoveInput = z.input<typeof taskMoveSchema>

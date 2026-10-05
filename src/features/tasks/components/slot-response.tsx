@@ -12,15 +12,12 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 
 import { respondToSlotAction, type RespondToSlotState } from "../actions"
 import { taskErrorMessage } from "../errors"
+import { HandBackForm, PENDING_STYLE } from "./hand-back-form"
 import { refreshAfterFailure } from "./refresh-after-failure"
-
-const REASON_MAX = 280
 
 const SUCCESS_COPY = {
   on_it: "You're on it.",
@@ -28,12 +25,6 @@ const SUCCESS_COPY = {
 } as const
 
 type Response = keyof typeof SUCCESS_COPY
-
-// Shown while an answer is saving. The controls stay focusable
-// (`aria-disabled`, not `disabled`, which would drop focus to the page) and
-// ignore input instead.
-const PENDING_STYLE =
-  "aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 
 /**
  * I'm on it / Can't take this, for one slot the viewer may answer (the page
@@ -64,8 +55,6 @@ export function SlotResponse({
   const reasonRef = useRef<HTMLInputElement>(null)
   const cantTakeRef = useRef<HTMLButtonElement>(null)
   const panelId = useId()
-  const reasonId = useId()
-  const hintId = useId()
 
   useEffect(() => {
     if (handingBack) reasonRef.current?.focus()
@@ -152,60 +141,15 @@ export function SlotResponse({
       </div>
 
       {handingBack && (
-        <form
+        <HandBackForm
           id={panelId}
-          noValidate
-          className="flex flex-col gap-3 rounded-lg bg-muted p-card-padding"
-          onSubmit={(event) => {
-            event.preventDefault()
-            respond("needs_reassignment")
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault()
-              cancel()
-            }
-          }}
-        >
-          <p>
-            Can&apos;t take this? Hand it back — your head will reassign it.
-          </p>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={reasonId}>Reason (optional)</Label>
-            <Input
-              ref={reasonRef}
-              id={reasonId}
-              value={reason}
-              maxLength={REASON_MAX}
-              aria-describedby={hintId}
-              aria-disabled={isPending || undefined}
-              readOnly={isPending}
-              className={cn("min-h-11 bg-card", PENDING_STYLE)}
-              onChange={(event) => setReason(event.target.value)}
-            />
-            <p id={hintId} className="text-sm text-muted-foreground">
-              Only you and the task&apos;s approver see this.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Button
-              type="submit"
-              className={cn("min-h-11", PENDING_STYLE)}
-              aria-disabled={isPending || undefined}
-            >
-              Hand it back
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className={cn("min-h-11", PENDING_STYLE)}
-              aria-disabled={isPending || undefined}
-              onClick={cancel}
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
+          reason={reason}
+          onReasonChange={setReason}
+          onSubmit={() => respond("needs_reassignment")}
+          onCancel={cancel}
+          pending={isPending}
+          reasonRef={reasonRef}
+        />
       )}
     </div>
   )

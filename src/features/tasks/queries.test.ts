@@ -220,6 +220,7 @@ function mockDetail({
       task_id: TASK_ID,
       allowed_moves: ["doing", "for_review"],
       respondable_slot_ids: [SLOT_C],
+      hand_back_slot_ids: [SLOT_B],
     },
   ] as unknown,
   members = [
@@ -358,6 +359,7 @@ describe("getTaskDetail", () => {
       ],
       allowedMoves: ["doing", "for_review"],
       respondableSlotIds: [SLOT_C],
+      handBackSlotIds: [SLOT_B],
       roleLabels: expect.objectContaining({ layout_artist: "Layout Artist" }),
     })
   })
@@ -377,6 +379,7 @@ describe("getTaskDetail", () => {
 
     expect(detail?.allowedMoves).toEqual([])
     expect(detail?.respondableSlotIds).toEqual([])
+    expect(detail?.handBackSlotIds).toEqual([])
   })
 
   it.each([
@@ -503,9 +506,9 @@ describe("getWhatsMine", () => {
       if (name === "task_capabilities") {
         return Promise.resolve({
           data: fixture.capabilities ?? [
-            { task_id: T1, allowed_moves: [], respondable_slot_ids: [S1] },
-            { task_id: T2, allowed_moves: ["to_do"], respondable_slot_ids: [] },
-            { task_id: T3, allowed_moves: [], respondable_slot_ids: [S4] },
+            { task_id: T1, allowed_moves: [], respondable_slot_ids: [S1], hand_back_slot_ids: [] },
+            { task_id: T2, allowed_moves: ["to_do"], respondable_slot_ids: [], hand_back_slot_ids: [] },
+            { task_id: T3, allowed_moves: [], respondable_slot_ids: [S4], hand_back_slot_ids: [] },
           ],
           error: fixture.capabilitiesError ?? null,
         })

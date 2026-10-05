@@ -17,7 +17,12 @@ vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
 
-import { createTaskAction, moveTaskAction, respondToSlotAction } from "./actions"
+import {
+  createTaskAction,
+  handBackSlotAction,
+  moveTaskAction,
+  respondToSlotAction,
+} from "./actions"
 
 const MEMBER_ID = "00000000-0000-4000-8000-000000000001"
 
@@ -265,5 +270,64 @@ describe("error copy", () => {
       "tasks.not_allowed": "Couldn't save — try again.",
       "tasks.save_failed": "Couldn't save — try again.",
     })
+  })
+})
+
+describe("handBackSlotAction", () => {
+  it("rejects invalid input without calling the database", async () => {
+    const result = await handBackSlotAction({ slotId: "abc" })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it("rejects a reason over 280 characters", async () => {
+    const result = await handBackSlotAction({
+      slotId: SLOT_ID,
+      reason: "x".repeat(281),
+    })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it("sends the trimmed reason to hand_back_slot, then revalidates the dashboard", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    const result = await handBackSlotAction({
+      slotId: SLOT_ID,
+      reason: "  Out sick  ",
+    })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("hand_back_slot", {
+      slot_id: SLOT_ID,
+      reason: "Out sick",
+    })
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(result).toEqual({ ok: true, data: { state: "needs_reassignment" } })
+  })
+
+  it("sends no reason when it is blank", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    await handBackSlotAction({ slotId: SLOT_ID, reason: "   " })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("hand_back_slot", {
+      slot_id: SLOT_ID,
+    })
+  })
+
+  it.each([
+    ["auth.not_active", "auth.not_active"],
+    ["tasks.not_found", "tasks.not_found"],
+    ["tasks.not_allowed", "tasks.not_allowed"],
+    ["something unexpected", "tasks.save_failed"],
+  ])("maps the database error %s to %s without revalidating", async (message, code) => {
+    rpc.mockResolvedValue({ data: null, error: { message } })
+
+    const result = await handBackSlotAction({ slotId: SLOT_ID })
+
+    expect(result).toEqual({ ok: false, code })
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 })
