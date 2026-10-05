@@ -12,6 +12,7 @@ import {
   TASK_COLUMN_FAMILIES,
   TASK_COLUMN_LABELS,
 } from "../status"
+import { TaskCardMenu } from "./calendar-menu"
 
 const DUE_FORMAT = "EEE, MMM d, h:mm a"
 const MAX_AVATARS = 3
@@ -60,7 +61,8 @@ export function TaskCard({
   return (
     <article className="rounded-lg bg-card p-card-padding shadow-card has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring">
       <div className="relative flex flex-col gap-2">
-        <Heading className="font-semibold break-words">
+        <TaskCardMenu taskId={task.id} title={task.title} />
+        <Heading className="pr-11 font-semibold break-words">
           <Link
             href={`/dashboard/tasks/${task.id}`}
             className="after:absolute after:inset-0 after:rounded-lg focus-visible:outline-hidden"

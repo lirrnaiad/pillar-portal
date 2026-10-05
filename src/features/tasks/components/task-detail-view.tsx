@@ -1,9 +1,12 @@
 import { StatusBadge } from "@/components/status-badge"
 import { ExternalLink } from "@/components/ui/external-link"
+import { clientEnv } from "@/lib/env.client"
 import { formatInPht } from "@/lib/time"
 
+import { buildCalendarEvent, googleCalendarUrl } from "../calendar"
 import type { TaskDetail } from "../queries"
 import { SLOT_STATE_FAMILIES, SLOT_STATE_LABELS } from "../status"
+import { AddToCalendarMenu } from "./calendar-menu"
 import { SlotResponse } from "./slot-response"
 import { TaskColumnControl } from "./task-column-control"
 
@@ -18,6 +21,18 @@ const DUE_FORMAT = "EEE, MMM d, yyyy 'at' h:mm a"
  */
 export function TaskDetailView({ task }: { task: TaskDetail }) {
   const respondable = new Set(task.respondableSlotIds)
+  const googleUrl = googleCalendarUrl(
+    buildCalendarEvent(
+      {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        dueAt: task.dueAt,
+        referenceUrl: task.referenceUrl,
+      },
+      clientEnv.NEXT_PUBLIC_SITE_URL
+    )
+  )
 
   return (
     <article>
@@ -31,6 +46,10 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
           column={task.column}
           allowedMoves={task.allowedMoves}
         />
+      </div>
+
+      <div className="mt-3">
+        <AddToCalendarMenu taskId={task.id} googleUrl={googleUrl} />
       </div>
 
       <dl className="mt-6 flex flex-col gap-3">

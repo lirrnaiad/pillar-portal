@@ -42,7 +42,10 @@ const TASKS = [
   task("Cover art", "2026-10-20T09:00:00Z"),
 ]
 
-const triggers = () => screen.getAllByRole("button")
+const triggers = () =>
+  screen
+    .getAllByRole("button")
+    .filter((b) => !b.getAttribute("aria-label")?.startsWith("More actions"))
 const names = () =>
   triggers().map((trigger) => trigger.getAttribute("aria-label"))
 

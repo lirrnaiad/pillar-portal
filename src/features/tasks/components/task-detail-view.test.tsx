@@ -14,6 +14,9 @@ vi.mock("../actions", () => ({
   respondToSlotAction: vi.fn(),
 }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock("@/lib/env.client", () => ({
+  clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
+}))
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 // jsdom implements neither PointerEvent capture nor scrollIntoView, which
@@ -188,6 +191,24 @@ describe("TaskDetailView", () => {
     expect(within(writer).queryByRole("button")).toBeNull()
   })
 
+  it("offers Google Calendar with the event prefilled and the link back", async () => {
+    const user = userEvent.setup()
+    render(<TaskDetailView task={TASK} />)
+
+    await user.click(
+      screen.getByRole("button", { name: "Add to Google Calendar" })
+    )
+    const href =
+      screen
+        .getByRole("menuitem", { name: /Open in Google Calendar/ })
+        .getAttribute("href") ?? ""
+    expect(href).toContain("text=Due%3A%20Lay%20out%20the%20spread")
+    expect(href).toContain("dates=20261031T153000Z/20261031T154500Z")
+    expect(decodeURIComponent(href)).toContain(
+      `https://pillar.example/dashboard/tasks/${TASK.id}`
+    )
+  })
+
   it("lists exactly the allowed moves", async () => {
     const user = userEvent.setup()
     render(<TaskDetailView task={TASK} />)
@@ -209,7 +230,10 @@ describe("TaskDetailView", () => {
     )
 
     expect(screen.queryByRole("combobox")).toBeNull()
-    expect(screen.queryByRole("button")).toBeNull()
+    // Only the calendar menu remains: it is not a move or a response.
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Add to Google Calendar",
+    ])
   })
 
   it("omits the reference link row and the description when they're empty", () => {

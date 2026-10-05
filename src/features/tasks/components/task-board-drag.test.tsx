@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -234,6 +235,23 @@ describe("TaskBoard drag", () => {
     await waitFor(() => expect(link("Lay out the spread")).toHaveFocus())
   })
 
+  it("does not start a drag from a mouse or touch start on the card menu", () => {
+    render(<TaskBoard cards={CARDS} />)
+    const trigger = screen.getByRole("button", {
+      name: "More actions, Lay out the spread",
+    })
+
+    fireEvent.mouseDown(trigger, { button: 0, clientX: 0, clientY: 0 })
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 })
+    fireEvent.touchStart(trigger, {
+      touches: [{ clientX: 0, clientY: 0 }],
+    })
+
+    expect(row()).not.toHaveClass("snap-none")
+    expect(document.querySelector("[inert]")).toBeNull()
+    expect(link("Lay out the spread")).toBeInTheDocument()
+  })
+
   it("swallows the click that ends a pointer drag, once", async () => {
     render(<TaskBoard cards={CARDS} />)
 
@@ -272,5 +290,16 @@ describe("TaskBoard drag", () => {
       reached: true,
       prevented: false,
     })
+  })
+
+  it("control: a mouse drag on the card itself does start one", () => {
+    render(<TaskBoard cards={CARDS} />)
+    const title = link("Lay out the spread")
+
+    fireEvent.mouseDown(title, { button: 0, clientX: 0, clientY: 0 })
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 })
+
+    expect(row()).toHaveClass("snap-none")
+    fireEvent.keyDown(document, { code: "Escape" })
   })
 })
