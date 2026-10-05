@@ -147,7 +147,19 @@ describe("TaskCard", () => {
     )
 
     const link = screen.getByRole("link", { name: "Lay out the spread" })
-    expect(link).not.toContainElement(screen.getByRole("button"))
+    expect(link).not.toContainElement(
+      screen.getByRole("button", { name: "Answer" })
+    )
+  })
+
+  it("has a More actions menu button outside the title link", () => {
+    render(<TaskCard task={TASK} />)
+
+    const link = screen.getByRole("link", { name: "Lay out the spread" })
+    const menu = screen.getByRole("button", {
+      name: "More actions, Lay out the spread",
+    })
+    expect(link).not.toContainElement(menu)
   })
 
   it("has no axe violations", async () => {

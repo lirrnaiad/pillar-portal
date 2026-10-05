@@ -11,7 +11,12 @@ vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
 
-import { getTaskDetail, getTaskFormOptions, getWhatsMine } from "./queries"
+import {
+  getTaskDetail,
+  getTaskForCalendar,
+  getTaskFormOptions,
+  getWhatsMine,
+} from "./queries"
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -708,5 +713,46 @@ describe("getWhatsMine", () => {
     await expect(getWhatsMine()).rejects.toThrow(
       `getWhatsMine: reading ${name} failed`
     )
+  })
+})
+
+describe("getTaskForCalendar", () => {
+  const client = (result: { data: unknown; error: unknown }) => {
+    const maybeSingle = vi.fn().mockResolvedValue(result)
+    const from = vi.fn(() => ({
+      select: () => ({ eq: () => ({ maybeSingle }) }),
+    }))
+    createClient.mockResolvedValue({ from })
+    return from
+  }
+  const ID = "00000000-0000-4000-8000-000000000021"
+
+  it("maps the row", async () => {
+    client({
+      data: {
+        id: ID,
+        title: "T",
+        description: null,
+        due_at: "2026-10-10T09:00:00+00:00",
+        reference_url: "https://x.test",
+      },
+      error: null,
+    })
+    expect(await getTaskForCalendar(ID)).toEqual({
+      id: ID,
+      title: "T",
+      description: null,
+      dueAt: "2026-10-10T09:00:00+00:00",
+      referenceUrl: "https://x.test",
+    })
+  })
+
+  it("is null for a non-uuid without querying, a missing task and an error", async () => {
+    const from = client({ data: null, error: null })
+    expect(await getTaskForCalendar("nope")).toBeNull()
+    expect(from).not.toHaveBeenCalled()
+    expect(await getTaskForCalendar(ID)).toBeNull()
+    client({ data: null, error: { message: "x" } })
+    expect(await getTaskForCalendar(ID)).toBeNull()
   })
 })
