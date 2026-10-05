@@ -16,15 +16,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { TaskFormOptions } from "../queries"
 import { TaskForm } from "./task-form"
 
-const { createTaskAction, toastSuccess, toastError } = vi.hoisted(() => ({
-  createTaskAction: vi.fn(),
-  toastSuccess: vi.fn(),
-  toastError: vi.fn(),
-}))
+const { createTaskAction, toastSuccess, toastError, toastPlain } = vi.hoisted(
+  () => ({
+    createTaskAction: vi.fn(),
+    toastSuccess: vi.fn(),
+    toastError: vi.fn(),
+    toastPlain: vi.fn(),
+  })
+)
 
 vi.mock("../actions", () => ({ createTaskAction }))
 vi.mock("sonner", () => ({
-  toast: { success: toastSuccess, error: toastError },
+  toast: Object.assign(toastPlain, {
+    success: toastSuccess,
+    error: toastError,
+  }),
 }))
 // TaskForm imports PRODUCTION_ROLE_LABELS through @/features/members, whose
 // index.ts also pulls in actions.ts (env.client) and queries.ts
@@ -207,14 +213,47 @@ describe("TaskForm", () => {
       })
     )
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("Task created")
+      expect(toastSuccess).toHaveBeenCalledWith("Task created", {
+        action: expect.objectContaining({ label: "Copy for Messenger" }),
+      })
     )
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    await toastSuccess.mock.calls[0][1].action.onClick()
+    expect(toastSuccess).toHaveBeenCalledWith("Copied — paste it in Messenger.")
+    // 09:00 on 2026-11-01 PHT, one Layout Artist slot, the new task's id.
+    expect(writeText).toHaveBeenCalledWith(
+      "📌 Lay out the spread — Layout Artist · due Sun, Nov 1, 9:00 AM\nhttps://pillar.example/dashboard/tasks/task-1"
+    )
+    vi.unstubAllGlobals()
 
     // Reset: the title is cleared...
     await waitFor(() => expect(screen.getByLabelText("Title")).toHaveValue(""))
     // ...but the owner survives the reset.
     expect(screen.getByRole("combobox", { name: "Owner" })).toHaveTextContent(
       "News"
+    )
+  })
+
+  it("shows the message in a toast when the action can't reach the clipboard", async () => {
+    createTaskAction.mockResolvedValue({ ok: true, data: { id: "task-1" } })
+    const user = userEvent.setup()
+    renderForm()
+    await fillMinimalValidForm(user)
+    await user.click(screen.getByRole("button", { name: "Create task" }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+
+    vi.stubGlobal("navigator", {})
+    await toastSuccess.mock.calls[0][1].action.onClick()
+    vi.unstubAllGlobals()
+    expect(toastPlain).toHaveBeenCalledWith(
+      "Copy this and paste it in Messenger.",
+      expect.objectContaining({
+        description: expect.stringContaining("/dashboard/tasks/task-1"),
+      })
+    )
+    expect(toastSuccess).not.toHaveBeenCalledWith(
+      "Copied — paste it in Messenger."
     )
   })
 

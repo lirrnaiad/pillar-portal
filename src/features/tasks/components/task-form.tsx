@@ -31,9 +31,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { clientEnv } from "@/lib/env.client"
+import { phtInputToUtc } from "@/lib/time"
 
 import { createTaskAction, type CreateTaskState } from "../actions"
 import { taskErrorMessage } from "../errors"
+import {
+  buildMessengerMessage,
+  copyText,
+  MESSENGER_COPIED,
+  MESSENGER_HINT,
+} from "../messenger"
 import type { TaskFormOptions } from "../queries"
 import {
   PRODUCTION_ROLES,
@@ -127,7 +135,43 @@ export function TaskForm({ options }: { options: TaskFormOptions }) {
       toast.error(taskErrorMessage(result.code))
       return
     }
-    toast.success("Task created")
+    // The task exists by now, so a message that can't be built must not
+    // turn the save into a failure: the toast just loses its action.
+    let message: string | null = null
+    try {
+      message = buildMessengerMessage(
+        {
+          id: result.data.id,
+          title: data.title,
+          roles: data.slots.map((slot) => slot.role),
+          dueAt: phtInputToUtc(data.dueAt),
+        },
+        clientEnv.NEXT_PUBLIC_SITE_URL,
+        options.roleLabels
+      )
+    } catch {
+      message = null
+    }
+    const text = message
+    toast.success(
+      "Task created",
+      text === null
+        ? undefined
+        : {
+            action: {
+              label: "Copy for Messenger",
+              onClick: async () => {
+                if (await copyText(text)) toast.success(MESSENGER_COPIED)
+                else
+                  toast(MESSENGER_HINT, {
+                    description: text,
+                    duration: Infinity,
+                    closeButton: true,
+                  })
+              },
+            },
+          }
+    )
     reset(
       emptyValues({
         owningSectionId: data.owningSectionId,

@@ -32,7 +32,10 @@ beforeEach(() => {
   Element.prototype.scrollIntoView ??= () => {}
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 // color-contrast can't be computed in jsdom (it is always "incomplete").
 async function axeViolations(node: Element) {
@@ -99,6 +102,17 @@ function slotRows() {
 }
 
 describe("TaskDetailView", () => {
+  it("offers Copy for Messenger to any viewer", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const user = userEvent.setup({ writeToClipboard: false })
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    render(<TaskDetailView task={TASK} />)
+    await user.click(screen.getByRole("button", { name: "Copy for Messenger" }))
+    expect(writeText).toHaveBeenCalledWith(
+      `📌 Lay out the spread — Layout Artist / Cartoonist / Writer · due Sat, Oct 31, 11:30 PM\nhttps://pillar.example/dashboard/tasks/${TASK.id}`
+    )
+  })
+
   it("shows the title, column, owner, due date in PHT, reference link and description", () => {
     render(<TaskDetailView task={TASK} />)
 
@@ -230,7 +244,11 @@ describe("TaskDetailView", () => {
   it("offers Hand back beside the move control only for slots in handBackSlotIds", () => {
     render(
       <TaskDetailView
-        task={{ ...TASK, respondableSlotIds: [], handBackSlotIds: [LAYOUT_SLOT] }}
+        task={{
+          ...TASK,
+          respondableSlotIds: [],
+          handBackSlotIds: [LAYOUT_SLOT],
+        }}
       />
     )
 
@@ -285,14 +303,20 @@ describe("TaskDetailView", () => {
   it("offers no move control and no respond buttons when task_capabilities allows nothing", () => {
     render(
       <TaskDetailView
-        task={{ ...TASK, allowedMoves: [], respondableSlotIds: [], handBackSlotIds: [] }}
+        task={{
+          ...TASK,
+          allowedMoves: [],
+          respondableSlotIds: [],
+          handBackSlotIds: [],
+        }}
       />
     )
 
     expect(screen.queryByRole("combobox")).toBeNull()
-    // Only the calendar menu remains: it is not a move or a response.
+    // Only the calendar menu and Copy for Messenger remain: neither is a move or a response.
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([
       "Add to Google Calendar",
+      "Copy for Messenger",
     ])
   })
 

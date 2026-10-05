@@ -4,9 +4,11 @@ import { clientEnv } from "@/lib/env.client"
 import { formatInPht } from "@/lib/time"
 
 import { buildCalendarEvent, googleCalendarUrl } from "../calendar"
+import { buildMessengerMessage } from "../messenger"
 import type { TaskDetail } from "../queries"
 import { SLOT_STATE_FAMILIES, SLOT_STATE_LABELS } from "../status"
 import { AddToCalendarMenu } from "./calendar-menu"
+import { CopyForMessenger } from "./copy-for-messenger"
 import { HandBack } from "./hand-back"
 import { SlotResponse } from "./slot-response"
 import { TaskColumnControl } from "./task-column-control"
@@ -37,6 +39,17 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
     )
   )
 
+  const message = buildMessengerMessage(
+    {
+      id: task.id,
+      title: task.title,
+      roles: task.slots.map((slot) => slot.role),
+      dueAt: task.dueAt,
+    },
+    clientEnv.NEXT_PUBLIC_SITE_URL,
+    task.roleLabels
+  )
+
   return (
     <article>
       <h1 className="font-heading text-display break-words text-navy">
@@ -54,21 +67,22 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
       {handBackSlots.length > 0 && (
         <div className="mt-3 flex flex-col gap-3">
           {handBackSlots.map((slot) => (
-              <HandBack
-                key={slot.id}
-                slotId={slot.id}
-                slotLabel={task.roleLabels[slot.role]}
-                rowId={`slot-${slot.id}`}
-              />
-            ))}
+            <HandBack
+              key={slot.id}
+              slotId={slot.id}
+              slotLabel={task.roleLabels[slot.role]}
+              rowId={`slot-${slot.id}`}
+            />
+          ))}
           <p className="text-sm text-muted-foreground">
             Can&apos;t take this? Hand it back — your head will reassign it.
           </p>
         </div>
       )}
 
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap items-start gap-3">
         <AddToCalendarMenu taskId={task.id} googleUrl={googleUrl} />
+        <CopyForMessenger message={message} />
       </div>
 
       <dl className="mt-6 flex flex-col gap-3">
