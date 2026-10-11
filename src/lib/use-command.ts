@@ -6,7 +6,8 @@ import { refreshAfterFailure } from "./refresh-after-failure"
 
 /**
  * The part of AD-3's action result the hook reads: `ok`, and on a refusal its
- * `code`. Any `data` or `params` pass through untouched.
+ * `code`. A success reaches `onSuccess` whole, `data` included; a refusal's
+ * `params` aren't read, so copy that needs them can't come from this hook.
  */
 export type CommandResult<TCode extends string> =
   { ok: true } | { ok: false; code: TCode }

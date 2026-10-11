@@ -27,8 +27,8 @@ export type TaskFormOptions = {
    * Display labels for every production role, resolved here (server-side)
    * from @/features/members and handed down as data: task-form.tsx is a
    * client component, and PRODUCTION_ROLE_LABELS is reachable only through
-   * the members barrel, which also carries "server-only" code (queries.ts)
-   * that can't reach the client bundle.
+   * the members barrel, which also carries "server-only" code
+   * (members/queries.ts) that can't reach the client bundle.
    */
   roleLabels: Record<ProductionRole, string>
 }

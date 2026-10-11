@@ -49,6 +49,21 @@ function renderHandBack() {
   )
 }
 
+// The slot's row as Task detail renders it: HandBack goes away once a refresh
+// shows the slot is no longer the viewer's to hand back.
+function HandBackRow({ canHandBack = true }: { canHandBack?: boolean }) {
+  return (
+    <ul>
+      <li id={ROW_ID} tabIndex={-1}>
+        Layout Artist
+        {canHandBack && (
+          <HandBack slotId={SLOT_ID} slotLabel="Layout Artist" rowId={ROW_ID} />
+        )}
+      </li>
+    </ul>
+  )
+}
+
 const trigger = () => screen.getByRole("button", { name: /^Hand back/ })
 const reasonInput = () => screen.getByLabelText("Reason (optional)")
 
@@ -181,6 +196,24 @@ describe("HandBack", () => {
     )
     expect(toastSuccess).not.toHaveBeenCalled()
     expect(refresh).toHaveBeenCalled()
+  })
+
+  it("moves focus to the slot's row if a refresh after a refused hand-back takes the form away", async () => {
+    const user = userEvent.setup()
+    handBackSlotAction.mockResolvedValue({
+      ok: false,
+      code: "tasks.not_allowed",
+    })
+    const { rerender } = render(<HandBackRow />)
+
+    await user.click(trigger())
+    await user.type(reasonInput(), "Out sick{Enter}")
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce())
+    await waitFor(() => expect(reasonInput()).not.toHaveAttribute("readonly"))
+    expect(reasonInput()).toHaveFocus()
+
+    rerender(<HandBackRow canHandBack={false} />)
+    expect(document.getElementById(ROW_ID)).toHaveFocus()
   })
 
   it("toasts the generic copy when the call throws", async () => {
