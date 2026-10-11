@@ -1,23 +1,16 @@
 "use client"
 
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useTransition,
-} from "react"
-import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useCommand } from "@/lib/use-command"
 import { cn } from "@/lib/utils"
 
-import { handBackSlotAction, type HandBackSlotState } from "../actions"
+import { handBackSlotAction } from "../actions"
 import { taskErrorMessage } from "../errors"
-import { HandBackForm, PENDING_STYLE } from "./hand-back-form"
-import { refreshAfterFailure } from "./refresh-after-failure"
+import { HandBackForm } from "./hand-back-form"
+import { PENDING_STYLE } from "./pending-style"
+import { useHandBackPanel } from "./use-hand-back-panel"
 
 /**
  * Hand back, for one slot the viewer may hand back (the page renders this
@@ -35,56 +28,29 @@ export function HandBack({
   slotLabel: string
   rowId: string
 }) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-  const [open, setOpen] = useState(false)
-  const [reason, setReason] = useState("")
-  const rootRef = useRef<HTMLDivElement>(null)
-  const reasonRef = useRef<HTMLInputElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const panelId = useId()
-
-  useEffect(() => {
-    if (open) reasonRef.current?.focus()
-  }, [open])
-
-  // However this goes away, focus inside it moves to the slot's row rather
-  // than falling to the page.
-  useLayoutEffect(() => {
-    const root = rootRef.current
-    return () => {
-      if (root?.contains(document.activeElement)) {
-        document.getElementById(rowId)?.focus()
-      }
-    }
-  }, [rowId])
+  const { isPending, run } = useCommand({
+    errorMessage: taskErrorMessage,
+    thrownCode: "tasks.save_failed",
+  })
+  const {
+    open,
+    reason,
+    setReason,
+    rootRef,
+    reasonRef,
+    triggerRef,
+    panelId,
+    openPanel,
+    cancel,
+  } = useHandBackPanel({ rowId, pending: isPending })
 
   function submit() {
-    if (isPending) return
-    startTransition(async () => {
-      let result: HandBackSlotState
-      try {
-        result = await handBackSlotAction({ slotId, reason })
-      } catch {
-        toast.error(taskErrorMessage("tasks.save_failed"))
-        refreshAfterFailure(router)
-        return
-      }
-      if (!result.ok) {
-        toast.error(taskErrorMessage(result.code))
-        refreshAfterFailure(router)
-        return
-      }
-      document.getElementById(rowId)?.focus()
-      toast.success("Handed back — your head will reassign it.")
+    run(() => handBackSlotAction({ slotId, reason }), {
+      onSuccess: () => {
+        document.getElementById(rowId)?.focus()
+        toast.success("Handed back — your head will reassign it.")
+      },
     })
-  }
-
-  function cancel() {
-    if (isPending) return
-    setOpen(false)
-    setReason("")
-    triggerRef.current?.focus()
   }
 
   return (
@@ -97,11 +63,7 @@ export function HandBack({
         aria-disabled={isPending || undefined}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        onClick={() => {
-          if (isPending) return
-          if (open) reasonRef.current?.focus()
-          else setOpen(true)
-        }}
+        onClick={openPanel}
       >
         Hand back<span className="sr-only"> ({slotLabel})</span>
       </Button>

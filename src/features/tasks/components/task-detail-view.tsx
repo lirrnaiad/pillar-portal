@@ -5,7 +5,7 @@ import { formatInPht } from "@/lib/time"
 
 import { buildCalendarEvent, googleCalendarUrl } from "../calendar"
 import { buildMessengerMessage } from "../messenger"
-import type { TaskDetail } from "../queries"
+import type { TaskDetail } from "../queries/task-detail"
 import { SLOT_STATE_FAMILIES, SLOT_STATE_LABELS } from "../status"
 import { AddToCalendarMenu } from "./calendar-menu"
 import { CopyForMessenger } from "./copy-for-messenger"

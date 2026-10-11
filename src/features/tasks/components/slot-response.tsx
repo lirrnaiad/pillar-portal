@@ -1,23 +1,16 @@
 "use client"
 
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useTransition,
-} from "react"
-import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useCommand } from "@/lib/use-command"
 import { cn } from "@/lib/utils"
 
-import { respondToSlotAction, type RespondToSlotState } from "../actions"
+import { respondToSlotAction } from "../actions"
 import { taskErrorMessage } from "../errors"
-import { HandBackForm, PENDING_STYLE } from "./hand-back-form"
-import { refreshAfterFailure } from "./refresh-after-failure"
+import { HandBackForm } from "./hand-back-form"
+import { PENDING_STYLE } from "./pending-style"
+import { useHandBackPanel } from "./use-hand-back-panel"
 
 const SUCCESS_COPY = {
   on_it: "You're on it.",
@@ -47,71 +40,37 @@ export function SlotResponse({
   slotLabel: string
   rowId: string
 }) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-  const [handingBack, setHandingBack] = useState(false)
-  const [reason, setReason] = useState("")
-  const rootRef = useRef<HTMLDivElement>(null)
-  const reasonRef = useRef<HTMLInputElement>(null)
-  const cantTakeRef = useRef<HTMLButtonElement>(null)
-  const panelId = useId()
-
-  useEffect(() => {
-    if (handingBack) reasonRef.current?.focus()
-  }, [handingBack])
-
-  // However this goes away (a saved answer, or a refresh after a refused one
-  // that shows the slot is no longer the viewer's to answer), focus inside it
-  // moves to the slot's row rather than falling to the page. Layout-effect
-  // cleanup runs before React removes the DOM nodes, so focus is still here.
-  useLayoutEffect(() => {
-    const root = rootRef.current
-    return () => {
-      if (root?.contains(document.activeElement)) {
-        document.getElementById(rowId)?.focus()
-      }
-    }
-  }, [rowId])
+  const { isPending, run } = useCommand({
+    errorMessage: taskErrorMessage,
+    thrownCode: "tasks.save_failed",
+  })
+  const {
+    open,
+    reason,
+    setReason,
+    rootRef,
+    reasonRef,
+    triggerRef,
+    panelId,
+    openPanel,
+    cancel,
+  } = useHandBackPanel({ rowId, pending: isPending })
 
   function respond(response: Response) {
-    if (isPending) return
-    startTransition(async () => {
-      let result: RespondToSlotState
-      try {
-        result = await respondToSlotAction({
+    run(
+      () =>
+        respondToSlotAction({
           slotId,
           response,
           reason: response === "needs_reassignment" ? reason : null,
-        })
-      } catch {
-        toast.error(taskErrorMessage("tasks.save_failed"))
-        refreshAfterFailure(router)
-        return
+        }),
+      {
+        onSuccess: () => {
+          document.getElementById(rowId)?.focus()
+          toast.success(SUCCESS_COPY[response])
+        },
       }
-      if (!result.ok) {
-        toast.error(taskErrorMessage(result.code))
-        refreshAfterFailure(router)
-        return
-      }
-      document.getElementById(rowId)?.focus()
-      toast.success(SUCCESS_COPY[response])
-    })
-  }
-
-  function openPanel() {
-    if (isPending) return
-    if (handingBack) {
-      reasonRef.current?.focus()
-      return
-    }
-    setHandingBack(true)
-  }
-
-  function cancel() {
-    if (isPending) return
-    setHandingBack(false)
-    setReason("")
-    cantTakeRef.current?.focus()
+    )
   }
 
   return (
@@ -127,20 +86,20 @@ export function SlotResponse({
           I&apos;m on it<span className="sr-only"> ({slotLabel})</span>
         </Button>
         <Button
-          ref={cantTakeRef}
+          ref={triggerRef}
           type="button"
           variant="outline"
           className={cn("min-h-11", PENDING_STYLE)}
           aria-disabled={isPending || undefined}
-          aria-expanded={handingBack}
-          aria-controls={handingBack ? panelId : undefined}
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
           onClick={openPanel}
         >
           Can&apos;t take this<span className="sr-only"> ({slotLabel})</span>
         </Button>
       </div>
 
-      {handingBack && (
+      {open && (
         <HandBackForm
           id={panelId}
           reason={reason}

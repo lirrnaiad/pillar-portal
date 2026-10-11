@@ -12,7 +12,8 @@ import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type { TaskCardData, WhatsMine } from "../queries"
+import type { TaskCardData } from "../queries/shared"
+import type { WhatsMine } from "../queries/whats-mine"
 import { WhatsMineTasks } from "./whats-mine-tasks"
 
 // vi.mock factories run before this file's imports, so what they share with

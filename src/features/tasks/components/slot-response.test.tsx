@@ -305,6 +305,34 @@ describe("SlotResponse", () => {
     expect(reasonInput()).toHaveFocus()
   })
 
+  it("ignores Escape and Cancel while the hand-back is saving", async () => {
+    const user = userEvent.setup()
+    const settle = pendingCall()
+    renderResponse()
+
+    await user.click(cantTake())
+    await user.type(reasonInput(), "Busy{Enter}")
+    await waitFor(() =>
+      expect(reasonInput()).toHaveAttribute("aria-disabled", "true")
+    )
+
+    await user.keyboard("{Escape}")
+    expect(reasonInput()).toHaveValue("Busy")
+    expect(reasonInput()).toHaveFocus()
+
+    // A click focuses Cancel itself; the form must stay, with focus not
+    // sent back to Can't take this.
+    const cancelButton = screen.getByRole("button", { name: "Cancel" })
+    await user.click(cancelButton)
+    expect(reasonInput()).toHaveValue("Busy")
+    expect(cancelButton).toHaveFocus()
+    expect(cantTake()).toHaveAttribute("aria-expanded", "true")
+    expect(respondToSlotAction).toHaveBeenCalledOnce()
+
+    settle({ ok: false, code: "tasks.save_failed" })
+    await waitFor(() => expect(reasonInput()).not.toHaveAttribute("readonly"))
+  })
+
   it("closes the form on Cancel, clearing the reason and returning focus", async () => {
     const user = userEvent.setup()
     renderResponse()

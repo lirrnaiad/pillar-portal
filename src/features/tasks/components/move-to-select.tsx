@@ -9,8 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 
 import { TASK_COLUMN_LABELS, type TaskColumn } from "../status"
+import { PENDING_STYLE } from "./pending-style"
 
 export const MOVE_LABEL = "Move to…"
 
@@ -60,7 +62,7 @@ export function MoveToSelect({
           if (event.key.length === 1 && event.key !== " ")
             event.preventDefault()
         }}
-        className="min-h-11 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+        className={cn("min-h-11", PENDING_STYLE)}
       >
         <SelectValue placeholder={MOVE_LABEL} />
       </SelectTrigger>

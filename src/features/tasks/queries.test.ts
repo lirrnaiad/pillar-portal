@@ -11,12 +11,10 @@ vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
 
-import {
-  getTaskDetail,
-  getTaskForCalendar,
-  getTaskFormOptions,
-  getWhatsMine,
-} from "./queries"
+import { getTaskForCalendar } from "./queries/calendar"
+import { getTaskDetail } from "./queries/task-detail"
+import { getTaskFormOptions } from "./queries/task-form"
+import { getWhatsMine } from "./queries/whats-mine"
 
 afterEach(() => {
   vi.clearAllMocks()

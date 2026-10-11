@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { BoardCard } from "../queries"
+import type { BoardCard } from "../queries/board"
 import { TaskBoard } from "./task-board"
 
 // vi.mock factories run before this file's imports, so what they share with

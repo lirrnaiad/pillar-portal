@@ -1,4 +1,4 @@
-import type { WhatsMine } from "../queries"
+import type { WhatsMine } from "../queries/whats-mine"
 import { SlotResponse } from "./slot-response"
 import { TaskCard } from "./task-card"
 

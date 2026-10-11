@@ -52,6 +52,15 @@ function renderHandBack() {
 const trigger = () => screen.getByRole("button", { name: /^Hand back/ })
 const reasonInput = () => screen.getByLabelText("Reason (optional)")
 
+// An action call that stays pending until the test settles it.
+function pendingCall() {
+  let settle: (value: unknown) => void = () => {}
+  handBackSlotAction.mockReturnValue(
+    new Promise((resolve) => (settle = resolve))
+  )
+  return (value: unknown) => settle(value)
+}
+
 describe("HandBack", () => {
   it("is a 44px secondary button that opens nothing until chosen", () => {
     renderHandBack()
@@ -125,6 +134,35 @@ describe("HandBack", () => {
     expect(screen.queryByLabelText("Reason (optional)")).toBeNull()
     expect(trigger()).toHaveFocus()
     expect(handBackSlotAction).not.toHaveBeenCalled()
+  })
+
+  it("ignores Escape and Cancel while the hand-back is saving", async () => {
+    const user = userEvent.setup()
+    const settle = pendingCall()
+    renderHandBack()
+
+    await user.click(trigger())
+    await user.type(reasonInput(), "Out sick{Enter}")
+    await waitFor(() =>
+      expect(trigger()).toHaveAttribute("aria-disabled", "true")
+    )
+
+    await user.keyboard("{Escape}")
+    expect(reasonInput()).toHaveValue("Out sick")
+    expect(reasonInput()).toHaveFocus()
+
+    // A click focuses Cancel itself; the form must stay, with focus not
+    // sent back to the trigger.
+    const cancelButton = screen.getByRole("button", { name: "Cancel" })
+    await user.click(cancelButton)
+    expect(reasonInput()).toHaveValue("Out sick")
+    expect(cancelButton).toHaveFocus()
+    expect(trigger()).toHaveAttribute("aria-expanded", "true")
+    expect(trigger()).toHaveAttribute("aria-disabled", "true")
+    expect(handBackSlotAction).toHaveBeenCalledOnce()
+
+    settle({ ok: false, code: "tasks.save_failed" })
+    await waitFor(() => expect(trigger()).not.toHaveAttribute("aria-disabled"))
   })
 
   it("toasts the error copy and re-reads the page when the hand-back is refused", async () => {

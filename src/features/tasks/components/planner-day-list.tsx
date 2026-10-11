@@ -7,7 +7,7 @@ import {
 import { phtDayLabel } from "@/lib/time"
 
 import { deadlineCount, tasksByDay } from "../planner"
-import type { TaskCardData } from "../queries"
+import type { TaskCardData } from "../queries/shared"
 import { TaskCard } from "./task-card"
 
 /**

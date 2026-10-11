@@ -9,7 +9,7 @@ vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
 
-import { getBoard, getBoardOwners } from "./queries"
+import { getBoard, getBoardOwners } from "./queries/board"
 
 afterEach(() => {
   vi.clearAllMocks()

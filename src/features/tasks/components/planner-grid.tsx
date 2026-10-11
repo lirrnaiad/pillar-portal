@@ -2,7 +2,7 @@ import { monthWeeks } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
 import { tasksByDay } from "../planner"
-import type { TaskCardData } from "../queries"
+import type { TaskCardData } from "../queries/shared"
 import { PlannerChip } from "./planner-chip"
 
 const WEEKDAYS = [

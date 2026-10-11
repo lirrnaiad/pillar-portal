@@ -5,7 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react"
 import axe from "axe-core"
 import { afterEach, describe, expect, it } from "vitest"
 
-import type { TaskCardData } from "../queries"
+import type { TaskCardData } from "../queries/shared"
 import { PlannerChip } from "./planner-chip"
 
 afterEach(cleanup)
