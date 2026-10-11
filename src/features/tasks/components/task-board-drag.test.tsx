@@ -13,7 +13,7 @@ import {
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { BoardCard } from "../queries"
+import type { BoardCard } from "../queries/board"
 import { TaskBoard } from "./task-board"
 
 // jsdom has no layout, so a real pointer or keyboard drag can't be driven here.

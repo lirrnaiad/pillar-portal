@@ -5,7 +5,7 @@ import { StatusBadge, StatusDot } from "@/components/status-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { formatInPht } from "@/lib/time"
 
-import type { TaskCardData } from "../queries"
+import type { TaskCardData } from "../queries/shared"
 import {
   SLOT_STATE_FAMILIES,
   SLOT_STATE_LABELS,

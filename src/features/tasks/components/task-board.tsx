@@ -7,7 +7,6 @@ import {
   useOptimistic,
   useRef,
   useState,
-  useTransition,
 } from "react"
 import {
   DndContext,
@@ -23,13 +22,12 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 
 import { StatusDot } from "@/components/status-badge"
+import { useCommand } from "@/lib/use-command"
 import { cn } from "@/lib/utils"
 
-import { moveTaskAction, type MoveTaskState } from "../actions"
+import { moveTaskAction } from "../actions"
 import { BOARD_ROW_HEIGHT } from "../board"
 import {
   BOARD_KEYBOARD_CODES,
@@ -40,7 +38,7 @@ import {
   dropColumn,
 } from "../board-dnd"
 import { taskErrorMessage } from "../errors"
-import type { BoardCard } from "../queries"
+import type { BoardCard } from "../queries/board"
 import {
   TASK_COLUMN_FAMILIES,
   TASK_COLUMN_LABELS,
@@ -48,7 +46,6 @@ import {
   type TaskColumn,
 } from "../status"
 import { MoveToSelect } from "./move-to-select"
-import { refreshAfterFailure } from "./refresh-after-failure"
 import { TaskCard } from "./task-card"
 
 type HowMoved = "select" | "drag"
@@ -78,8 +75,10 @@ type HowMoved = "select" | "drag"
  * swallows that one click.
  */
 export function TaskBoard({ cards }: { cards: BoardCard[] }) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
+  const { isPending, run } = useCommand({
+    errorMessage: taskErrorMessage,
+    thrownCode: "tasks.save_failed",
+  })
   const [shownCards, applyMove] = useOptimistic(
     cards,
     (
@@ -142,22 +141,10 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
   })
 
   function move(taskId: string, toColumn: TaskColumn, how: HowMoved) {
-    if (isPending) return
-    lastMoved.current = { taskId, how }
-    startTransition(async () => {
+    run(() => {
+      lastMoved.current = { taskId, how }
       applyMove({ taskId, toColumn })
-      let result: MoveTaskState
-      try {
-        result = await moveTaskAction({ taskId, toColumn })
-      } catch {
-        toast.error(taskErrorMessage("tasks.save_failed"))
-        refreshAfterFailure(router)
-        return
-      }
-      if (!result.ok) {
-        toast.error(taskErrorMessage(result.code))
-        refreshAfterFailure(router)
-      }
+      return moveTaskAction({ taskId, toColumn })
     })
   }
 

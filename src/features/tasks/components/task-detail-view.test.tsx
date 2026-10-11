@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { TaskDetail } from "../queries"
+import type { TaskDetail } from "../queries/task-detail"
 import { TaskDetailView } from "./task-detail-view"
 
 const { handBackSlotAction } = vi.hoisted(() => ({

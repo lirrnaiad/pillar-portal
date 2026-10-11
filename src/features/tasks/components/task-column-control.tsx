@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useOptimistic, useRef, useTransition } from "react"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
+import { useEffect, useOptimistic, useRef } from "react"
 
 import { StatusDot } from "@/components/status-badge"
-import { moveTaskAction, type MoveTaskState } from "../actions"
+import { useCommand } from "@/lib/use-command"
+
+import { moveTaskAction } from "../actions"
 import { taskErrorMessage } from "../errors"
 import {
   TASK_COLUMN_FAMILIES,
@@ -13,7 +13,6 @@ import {
   type TaskColumn,
 } from "../status"
 import { MoveToSelect } from "./move-to-select"
-import { refreshAfterFailure } from "./refresh-after-failure"
 
 /**
  * The task's column as a status dot with its label, plus a "Move to…" select
@@ -36,8 +35,10 @@ export function TaskColumnControl({
   column: TaskColumn
   allowedMoves: readonly TaskColumn[]
 }) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
+  const { isPending, run } = useCommand({
+    errorMessage: taskErrorMessage,
+    thrownCode: "tasks.save_failed",
+  })
   const [shownColumn, setShownColumn] = useOptimistic(column)
   const statusRef = useRef<HTMLParagraphElement>(null)
   const hasMoves = allowedMoves.length > 0
@@ -54,21 +55,9 @@ export function TaskColumnControl({
   }, [hasMoves])
 
   function move(toColumn: TaskColumn) {
-    if (isPending) return
-    startTransition(async () => {
+    run(() => {
       setShownColumn(toColumn)
-      let result: MoveTaskState
-      try {
-        result = await moveTaskAction({ taskId, toColumn })
-      } catch {
-        toast.error(taskErrorMessage("tasks.save_failed"))
-        refreshAfterFailure(router)
-        return
-      }
-      if (!result.ok) {
-        toast.error(taskErrorMessage(result.code))
-        refreshAfterFailure(router)
-      }
+      return moveTaskAction({ taskId, toColumn })
     })
   }
 

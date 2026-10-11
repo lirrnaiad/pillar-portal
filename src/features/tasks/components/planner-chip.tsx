@@ -14,7 +14,7 @@ import {
   plannerChipStatus,
   type PlannerChipStatusKind,
 } from "../planner"
-import type { TaskCardData } from "../queries"
+import type { TaskCardData } from "../queries/shared"
 
 // Each status's glyph and color, at least 3:1 on the card. To Do takes
 // muted-foreground: the neutral dot's gray is only 2.5:1 on white.

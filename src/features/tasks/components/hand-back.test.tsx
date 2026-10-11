@@ -49,8 +49,32 @@ function renderHandBack() {
   )
 }
 
+// The slot's row as Task detail renders it: HandBack goes away once a refresh
+// shows the slot is no longer the viewer's to hand back.
+function HandBackRow({ canHandBack = true }: { canHandBack?: boolean }) {
+  return (
+    <ul>
+      <li id={ROW_ID} tabIndex={-1}>
+        Layout Artist
+        {canHandBack && (
+          <HandBack slotId={SLOT_ID} slotLabel="Layout Artist" rowId={ROW_ID} />
+        )}
+      </li>
+    </ul>
+  )
+}
+
 const trigger = () => screen.getByRole("button", { name: /^Hand back/ })
 const reasonInput = () => screen.getByLabelText("Reason (optional)")
+
+// An action call that stays pending until the test settles it.
+function pendingCall() {
+  let settle: (value: unknown) => void = () => {}
+  handBackSlotAction.mockReturnValue(
+    new Promise((resolve) => (settle = resolve))
+  )
+  return (value: unknown) => settle(value)
+}
 
 describe("HandBack", () => {
   it("is a 44px secondary button that opens nothing until chosen", () => {
@@ -127,6 +151,35 @@ describe("HandBack", () => {
     expect(handBackSlotAction).not.toHaveBeenCalled()
   })
 
+  it("ignores Escape and Cancel while the hand-back is saving", async () => {
+    const user = userEvent.setup()
+    const settle = pendingCall()
+    renderHandBack()
+
+    await user.click(trigger())
+    await user.type(reasonInput(), "Out sick{Enter}")
+    await waitFor(() =>
+      expect(trigger()).toHaveAttribute("aria-disabled", "true")
+    )
+
+    await user.keyboard("{Escape}")
+    expect(reasonInput()).toHaveValue("Out sick")
+    expect(reasonInput()).toHaveFocus()
+
+    // A click focuses Cancel itself; the form must stay, with focus not
+    // sent back to the trigger.
+    const cancelButton = screen.getByRole("button", { name: "Cancel" })
+    await user.click(cancelButton)
+    expect(reasonInput()).toHaveValue("Out sick")
+    expect(cancelButton).toHaveFocus()
+    expect(trigger()).toHaveAttribute("aria-expanded", "true")
+    expect(trigger()).toHaveAttribute("aria-disabled", "true")
+    expect(handBackSlotAction).toHaveBeenCalledOnce()
+
+    settle({ ok: false, code: "tasks.save_failed" })
+    await waitFor(() => expect(trigger()).not.toHaveAttribute("aria-disabled"))
+  })
+
   it("toasts the error copy and re-reads the page when the hand-back is refused", async () => {
     const user = userEvent.setup()
     handBackSlotAction.mockResolvedValue({
@@ -143,6 +196,24 @@ describe("HandBack", () => {
     )
     expect(toastSuccess).not.toHaveBeenCalled()
     expect(refresh).toHaveBeenCalled()
+  })
+
+  it("moves focus to the slot's row if a refresh after a refused hand-back takes the form away", async () => {
+    const user = userEvent.setup()
+    handBackSlotAction.mockResolvedValue({
+      ok: false,
+      code: "tasks.not_allowed",
+    })
+    const { rerender } = render(<HandBackRow />)
+
+    await user.click(trigger())
+    await user.type(reasonInput(), "Out sick{Enter}")
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce())
+    await waitFor(() => expect(reasonInput()).not.toHaveAttribute("readonly"))
+    expect(reasonInput()).toHaveFocus()
+
+    rerender(<HandBackRow canHandBack={false} />)
+    expect(document.getElementById(ROW_ID)).toHaveFocus()
   })
 
   it("toasts the generic copy when the call throws", async () => {

@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, describe, expect, it } from "vitest"
 
-import type { TaskCardData } from "../queries"
+import type { TaskCardData } from "../queries/shared"
 import { PlannerDayList } from "./planner-day-list"
 
 afterEach(cleanup)

@@ -7,13 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 
-export const REASON_MAX = 280
+import { PENDING_STYLE } from "./pending-style"
 
-// Shown while an answer is saving. The controls stay focusable
-// (`aria-disabled`, not `disabled`, which would drop focus to the page) and
-// ignore input instead.
-export const PENDING_STYLE =
-  "aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+export const REASON_MAX = 280
 
 /**
  * The inline hand-back form shared by Can't take this (an awaiting slot) and

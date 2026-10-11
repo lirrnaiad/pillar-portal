@@ -13,7 +13,7 @@ import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { TaskFormOptions } from "../queries"
+import type { TaskFormOptions } from "../queries/task-form"
 import { TaskForm } from "./task-form"
 
 const { createTaskAction, toastSuccess, toastError, toastPlain } = vi.hoisted(

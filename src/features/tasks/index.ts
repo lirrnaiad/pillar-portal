@@ -18,7 +18,7 @@ export {
   ownerFilterParam,
   parseOwnerFilterParam,
 } from "./board"
-export type { OwnerFilter } from "./board"
+export type { OwnerFilter, TaskOwnerOption } from "./board"
 export {
   buildCalendarEvent,
   calendarRoutePath,
@@ -57,28 +57,21 @@ export {
   tasksByDay,
 } from "./planner"
 export type { PlannerChipStatusKind, PlannerScope } from "./planner"
-export {
-  getBoard,
-  getBoardOwners,
-  getPlanner,
-  getTaskDetail,
-  getTaskForCalendar,
-  getTaskFormOptions,
-  getWhatsMine,
-} from "./queries"
+export { getBoard, getBoardOwners } from "./queries/board"
+export type { BoardCard } from "./queries/board"
+export { getTaskForCalendar } from "./queries/calendar"
+export { getPlanner } from "./queries/planner"
+export type { TaskCardAssignee, TaskCardData } from "./queries/shared"
+export { getTaskDetail } from "./queries/task-detail"
+export type { TaskDetail, TaskDetailSlot } from "./queries/task-detail"
+export { getTaskFormOptions } from "./queries/task-form"
 export type {
-  BoardCard,
   SlotMemberOption,
   SlotMembersByRole,
-  TaskCardAssignee,
-  TaskCardData,
-  TaskDetail,
-  TaskDetailSlot,
   TaskFormOptions,
-  TaskOwnerOption,
-  WaitingSlot,
-  WhatsMine,
-} from "./queries"
+} from "./queries/task-form"
+export { getWhatsMine } from "./queries/whats-mine"
+export type { WaitingSlot, WhatsMine } from "./queries/whats-mine"
 export {
   PRODUCTION_ROLES,
   slotHandBackSchema,

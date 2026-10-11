@@ -42,7 +42,7 @@ import {
   MESSENGER_COPIED,
   MESSENGER_HINT,
 } from "../messenger"
-import type { TaskFormOptions } from "../queries"
+import type { TaskFormOptions } from "../queries/task-form"
 import {
   PRODUCTION_ROLES,
   taskCreateSchema,
