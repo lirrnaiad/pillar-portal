@@ -2,24 +2,30 @@
 import "@testing-library/jest-dom/vitest"
 
 import { cleanup, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // The views are async Server Components, which React can't render on the
 // client, so their modules are stubbed; what's under test is which one the
 // page picks and what it passes. vi.mock factories run before this file's
 // imports, so the stubs the tests inspect are vi.hoisted.
-const { BoardView, PlannerView, WhatsMineView } = vi.hoisted(() => ({
-  BoardView: vi.fn(({ owner }: { owner: unknown }) => (
-    <p>board view, owner={String(owner)}</p>
-  )),
-  PlannerView: vi.fn(({ month, scope }: { month: unknown; scope: unknown }) => (
-    <p>
-      planner view, month={String(month)}, scope={String(scope)}
-    </p>
-  )),
-  WhatsMineView: vi.fn(() => <p>whats mine view</p>),
-}))
+const { BoardView, PlannerView, WhatsMineView, requireActiveMember } =
+  vi.hoisted(() => ({
+    BoardView: vi.fn(({ owner }: { owner: unknown }) => (
+      <p>board view, owner={String(owner)}</p>
+    )),
+    PlannerView: vi.fn(
+      ({ month, scope }: { month: unknown; scope: unknown }) => (
+        <p>
+          planner view, month={String(month)}, scope={String(scope)}
+        </p>
+      )
+    ),
+    WhatsMineView: vi.fn(() => <p>whats mine view</p>),
+    requireActiveMember: vi.fn(),
+  }))
 
+// The shared state check has its own tests (members' queries.test.ts).
+vi.mock("@/features/members", () => ({ requireActiveMember }))
 vi.mock("./board-view", () => ({ BoardView }))
 vi.mock("./planner-view", () => ({ PlannerView }))
 vi.mock("./whats-mine-view", () => ({ WhatsMineView }))
@@ -40,6 +46,10 @@ import { BoardSkeleton } from "./board-skeleton"
 import DashboardPage, { generateMetadata } from "./page"
 import { PlannerSkeleton } from "./planner-skeleton"
 import { WhatsMineSkeleton } from "./whats-mine-skeleton"
+
+beforeEach(() => {
+  requireActiveMember.mockResolvedValue({ state: "active" })
+})
 
 afterEach(() => {
   cleanup()
@@ -83,6 +93,16 @@ describe("generateMetadata", () => {
 })
 
 describe("DashboardPage", () => {
+  it("runs the shared state check before rendering any view", async () => {
+    const redirectError = new Error("NEXT_REDIRECT /login")
+    requireActiveMember.mockRejectedValue(redirectError)
+
+    await expect(DashboardPage(props({ view: "board" }))).rejects.toBe(
+      redirectError
+    )
+    expect(requireActiveMember).toHaveBeenCalledOnce()
+  })
+
   it("renders the Board for ?view=board, handing it the raw owner", async () => {
     render(await DashboardPage(props({ view: "board", owner: "desk:photo" })))
 

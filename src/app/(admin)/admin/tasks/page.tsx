@@ -2,14 +2,17 @@ import type { Metadata } from "next"
 
 import { getTaskFormOptions, TaskForm } from "@/features/tasks"
 
+import { requireAdmin } from "../../require-admin"
+
 export const metadata: Metadata = {
   title: "Create a task · The Pillar Portal",
 }
 
-// Any admin creates a task here (spec-1-5-admin-task-creation.md). The
-// (admin) layout has already refused a signed-out, pending or staff caller;
-// create_task itself is the actual authority (AD-4).
+// Any admin creates a task here (spec-1-5-admin-task-creation.md). The admin
+// check comes first, as in the layout, which doesn't stop this page
+// rendering; create_task itself is the actual authority (AD-4).
 export default async function AdminTasksPage() {
+  await requireAdmin()
   const options = await getTaskFormOptions()
 
   return (

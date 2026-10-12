@@ -163,10 +163,17 @@ max_indexes = 5
 # linked project, with the overrides in [remotes.staging] at the end of this
 # file; run `supabase config diff` first. Locally the app runs at
 # http://localhost:3000 (not 127.0.0.1, and not over https).
-# - Self sign-up is off: every account is a prototype persona or a seeded
-#   member (supabase/seed.sql, scripts/staging-personas.mjs). Story 2.1 turns
-#   it back on for Google. `[auth.email] enable_signup` stays true,
-#   because false there also turns off password sign-in, which personas use.
+# - Sign-up is on, because a new member's first Google sign-in creates their
+#   user, and the `before_user_created` hook below
+#   (private.before_user_created) refuses every new user that isn't from
+#   Google: email sign-up, OTP and magic links for new addresses, invites.
+#   `[auth.email] enable_signup` stays true, because false there also turns
+#   off password sign-in, which personas use. Personas and seeded members are
+#   created by supabase/seed.sql and scripts/staging-personas.mjs (Auth's
+#   admin API), which the hook doesn't see.
+# - Google is the only OAuth provider. Its client ID and secret come from
+#   git-ignored supabase/.env.local (see supabase/.env.example), never a
+#   committed value.
 # - Passwords are at least 16 characters, like PROTOTYPE_PERSONA_PASSWORD.
 # - MFA stays off until admin two-factor (Story 5.1).
 enabled = true
@@ -192,7 +199,8 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = false
+# On for Google; the before_user_created hook refuses everything else.
+enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -241,15 +249,16 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-# Stays true: false also turns off password sign-in. `[auth] enable_signup`
-# above is what refuses sign-up.
+# Stays true: false also turns off password sign-in. The before_user_created
+# hook is what refuses email sign-up.
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-# On, as on the hosted project. Self sign-up is off, and the seed and the staging
-# script create users already confirmed, so this changes nothing today.
+# On, as on the hosted project. Email sign-up is refused by the hook, and the
+# seed and the staging script create users already confirmed, so this changes
+# nothing today.
 enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
@@ -303,9 +312,10 @@ max_frequency = "5s"
 # inactivity_timeout = "8h"
 
 # This hook runs before a new user is created and allows developers to reject the request based on the incoming user object.
-# [auth.hook.before_user_created]
-# enabled = true
-# uri = "pg-functions://postgres/auth/before-user-created-hook"
+# Refuses every new user but a Google one (members_account_states migration).
+[auth.hook.before_user_created]
+enabled = true
+uri = "pg-functions://postgres/private/before_user_created"
 
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
 # [auth.hook.custom_access_token]
@@ -361,6 +371,16 @@ url = ""
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
+
+# Google sign-in (Story 2.1), the only provider enabled. The values come from
+# supabase/.env.local (git-ignored; see supabase/.env.example). Google's
+# authorized redirect URI is Auth's own callback,
+# http://127.0.0.1:54321/auth/v1/callback locally.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+skip_nonce_check = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.

@@ -48,14 +48,14 @@ describe("securityHeaders", () => {
         "connect-src 'self' https://abcdefghijklmnop.supabase.co wss://abcdefghijklmnop.supabase.co",
         "object-src 'none'",
         "base-uri 'self'",
-        "form-action 'self'",
+        "form-action 'self' https://abcdefghijklmnop.supabase.co https://accounts.google.com",
         "frame-ancestors 'none'",
         "upgrade-insecure-requests",
       ].join("; ")
     )
   })
 
-  it("allows no origin but self and Supabase", () => {
+  it("allows no origin but self and Supabase, and Google only as a form-action", () => {
     const allowed = new Set([
       "'self'",
       "'none'",
@@ -67,10 +67,27 @@ describe("securityHeaders", () => {
       "wss://abcdefghijklmnop.supabase.co",
     ])
     for (const isDev of [false, true]) {
-      for (const sources of csp({ ...STAGING, isDev }).values()) {
-        for (const source of sources) expect(allowed).toContain(source)
+      for (const [name, sources] of csp({ ...STAGING, isDev })) {
+        for (const source of sources) {
+          if (
+            name === "form-action" &&
+            source === "https://accounts.google.com"
+          )
+            continue
+          expect(allowed).toContain(source)
+        }
       }
     }
+  })
+
+  it("lets a pre-hydration Google sign-in post redirect through Supabase to Google", () => {
+    // The Server Action's 303 goes to Supabase's /authorize, which redirects
+    // to Google; CSP checks each hop of a form submission.
+    expect(csp(STAGING).get("form-action")).toEqual([
+      "'self'",
+      "https://abcdefghijklmnop.supabase.co",
+      "https://accounts.google.com",
+    ])
   })
 
   it("forbids framing", () => {
@@ -98,6 +115,11 @@ describe("securityHeaders", () => {
       "ws://127.0.0.1:54321",
     ])
     expect(local.get("img-src")).toContain("http://127.0.0.1:54321")
+    expect(local.get("form-action")).toEqual([
+      "'self'",
+      "http://127.0.0.1:54321",
+      "https://accounts.google.com",
+    ])
   })
 
   it("reduces the Supabase URL to its origin", () => {

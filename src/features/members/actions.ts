@@ -3,13 +3,52 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
+import { clientEnv } from "@/lib/env.client"
 import { personasEnabled, serverEnv } from "@/lib/env.server"
 import { createClient } from "@/lib/supabase/server"
 
 import type { MemberErrorCode } from "./errors"
 import { PERSONAS } from "./personas"
-import { safeReturnPath } from "./return-path"
+import { loginPath, safeReturnPath } from "./return-path"
 import { personaSignInSchema } from "./schemas"
+
+/**
+ * Starts Google sign-in (AD-7). PKCE: `signInWithOAuth` on the server writes
+ * the code verifier cookie and returns Supabase's authorize URL, which this
+ * redirects to (outside the `try`, since redirect() throws). Google sends
+ * the member back through Supabase to /auth/callback, the only redirect URL,
+ * carrying the form's `next` once `safeReturnPath` has checked it; the
+ * callback checks it again.
+ *
+ * Any failure goes back to /login with the "didn't finish" line, keeping
+ * `next`. `skipBrowserRedirect` is never passed: on the server the client
+ * never redirects by itself.
+ */
+export async function signInWithGoogleAction(
+  formData: FormData
+): Promise<void> {
+  const next = safeReturnPath(formData.get("next"))
+
+  let url: string | null = null
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: new URL(
+          `/auth/callback?next=${encodeURIComponent(next)}`,
+          clientEnv.NEXT_PUBLIC_SITE_URL
+        ).href,
+      },
+    })
+    if (!error && data.url) url = data.url
+  } catch {
+    url = null
+  }
+
+  if (url === null) redirect(loginPath({ next, error: true }))
+  redirect(url)
+}
 
 /** What the persona form shows after a failed attempt; success redirects. */
 export type PersonaSignInState = { ok: false; code: MemberErrorCode } | null

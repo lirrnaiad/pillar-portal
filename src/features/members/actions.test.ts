@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const { auth, cookieStore, createClient, redirect, RedirectError } = vi.hoisted(
   () => {
     const auth = {
+      signInWithOAuth: vi.fn(),
       signInWithPassword: vi.fn(),
       signOut: vi.fn(),
     }
@@ -66,7 +67,14 @@ function form(fields: Record<string, string> = {}) {
   return data
 }
 
+const AUTHORIZE_URL =
+  "http://127.0.0.1:54321/auth/v1/authorize?provider=google&code_challenge=x"
+
 beforeEach(() => {
+  auth.signInWithOAuth.mockResolvedValue({
+    data: { provider: "google", url: AUTHORIZE_URL },
+    error: null,
+  })
   auth.signInWithPassword.mockResolvedValue({ data: {}, error: null })
   auth.signOut.mockResolvedValue({ error: null })
 })
@@ -188,6 +196,100 @@ describe("signInAsPersonaAction", () => {
     ).resolves.toEqual({ ok: false, code: "auth.sign_in_failed" })
     expect(redirect).not.toHaveBeenCalled()
   })
+})
+
+describe("signInWithGoogleAction", () => {
+  it("starts Google sign-in with the callback carrying the checked next, then goes to Supabase", async () => {
+    const { signInWithGoogleAction } = await loadActions({ personas: "true" })
+
+    await expect(
+      signInWithGoogleAction(form({ next: "/dashboard/tasks/X?a=1&b=2" }))
+    ).rejects.toEqual(new RedirectError(AUTHORIZE_URL))
+
+    expect(auth.signInWithOAuth).toHaveBeenCalledExactlyOnceWith({
+      provider: "google",
+      options: {
+        redirectTo:
+          "https://pillar.example/auth/callback?next=%2Fdashboard%2Ftasks%2FX%3Fa%3D1%26b%3D2",
+      },
+    })
+    expect(redirect).toHaveBeenCalledExactlyOnceWith(AUTHORIZE_URL)
+  })
+
+  it("never asks the client to skip its redirect: on the server there is none", async () => {
+    const { signInWithGoogleAction } = await loadActions({
+      personas: undefined,
+    })
+
+    await expect(signInWithGoogleAction(form())).rejects.toThrow(RedirectError)
+
+    const [{ options }] = auth.signInWithOAuth.mock.calls[0]
+    expect(options).not.toHaveProperty("skipBrowserRedirect")
+    expect(Object.keys(options)).toEqual(["redirectTo"])
+  })
+
+  it.each([
+    "https://evil.example/",
+    "//evil.example",
+    "/\\evil.example",
+    "/.//evil.example",
+    "",
+  ])("carries /dashboard instead of the hostile next %j", async (next) => {
+    const { signInWithGoogleAction } = await loadActions({ personas: "true" })
+
+    await expect(signInWithGoogleAction(form({ next }))).rejects.toThrow(
+      RedirectError
+    )
+    expect(auth.signInWithOAuth.mock.calls[0][0].options.redirectTo).toBe(
+      "https://pillar.example/auth/callback?next=%2Fdashboard"
+    )
+  })
+
+  it("works with personas off: Google doesn't depend on them", async () => {
+    const { signInWithGoogleAction } = await loadActions({ personas: "false" })
+
+    await expect(signInWithGoogleAction(form())).rejects.toEqual(
+      new RedirectError(AUTHORIZE_URL)
+    )
+  })
+
+  it.each([
+    [
+      "returns an error",
+      () =>
+        auth.signInWithOAuth.mockResolvedValue({
+          data: { provider: "google", url: null },
+          error: { name: "AuthError", message: "x" },
+        }),
+    ],
+    [
+      "returns no url",
+      () =>
+        auth.signInWithOAuth.mockResolvedValue({
+          data: { provider: "google", url: null },
+          error: null,
+        }),
+    ],
+    [
+      "throws",
+      () => auth.signInWithOAuth.mockRejectedValue(new TypeError("boom")),
+    ],
+  ])(
+    "goes back to /login with the error and next when signInWithOAuth %s",
+    async (_label, fail) => {
+      fail()
+      const { signInWithGoogleAction } = await loadActions({ personas: "true" })
+
+      await expect(
+        signInWithGoogleAction(form({ next: "/dashboard?view=board" }))
+      ).rejects.toEqual(
+        new RedirectError(
+          "/login?next=%2Fdashboard%3Fview%3Dboard&error=sign-in"
+        )
+      )
+      expect(redirect).toHaveBeenCalledOnce()
+    }
+  )
 })
 
 describe("signOutAction", () => {
