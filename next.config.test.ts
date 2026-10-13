@@ -70,6 +70,9 @@ describe("next.config.ts", () => {
       expect(csp).toContain(
         "connect-src 'self' https://abcdefghijklmnop.supabase.co wss://abcdefghijklmnop.supabase.co"
       )
+      expect(csp).toContain(
+        "form-action 'self' https://abcdefghijklmnop.supabase.co https://accounts.google.com"
+      )
       expect(csp).not.toContain("'unsafe-eval'")
     }
   )
@@ -80,6 +83,9 @@ describe("next.config.ts", () => {
       (h) => h.key === "Content-Security-Policy"
     )?.value
     expect(csp).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'")
+    expect(csp).toContain(
+      "form-action 'self' https://abcdefghijklmnop.supabase.co https://accounts.google.com"
+    )
   })
 
   it.each(["/", "/api/health", "/some/deep/page"])(

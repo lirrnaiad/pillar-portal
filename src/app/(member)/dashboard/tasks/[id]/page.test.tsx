@@ -3,22 +3,31 @@ import "@testing-library/jest-dom/vitest"
 
 import { cleanup, render, screen } from "@testing-library/react"
 import axe from "axe-core"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { getTaskDetail, TaskDetailView } = vi.hoisted(() => ({
-  getTaskDetail: vi.fn(),
-  TaskDetailView: vi.fn<(props: { task: unknown }) => React.ReactNode>(() => (
-    <h1>Task detail view</h1>
-  )),
-}))
+const { getTaskDetail, TaskDetailView, requireActiveMember } = vi.hoisted(
+  () => ({
+    getTaskDetail: vi.fn(),
+    TaskDetailView: vi.fn<(props: { task: unknown }) => React.ReactNode>(() => (
+      <h1>Task detail view</h1>
+    )),
+    requireActiveMember: vi.fn(),
+  })
+)
 
 vi.mock("@/features/tasks", () => ({ getTaskDetail, TaskDetailView }))
+// The shared state check has its own tests (members' queries.test.ts).
+vi.mock("@/features/members", () => ({ requireActiveMember }))
 
 import TaskPage, { metadata } from "./page"
 
 const TASK_ID = "00000000-0000-4000-8000-000000000021"
+
+beforeEach(() => {
+  requireActiveMember.mockResolvedValue({ state: "active" })
+})
 
 afterEach(() => {
   cleanup()
@@ -45,6 +54,19 @@ async function renderPage(id: string) {
 describe("TaskPage", () => {
   it("is titled Task", () => {
     expect(metadata.title).toBe("Task · The Pillar Portal")
+  })
+
+  it("runs the shared state check first and reads no task when it redirects", async () => {
+    const redirectError = new Error("NEXT_REDIRECT /login")
+    requireActiveMember.mockRejectedValue(redirectError)
+
+    await expect(
+      TaskPage({
+        params: Promise.resolve({ id: TASK_ID }),
+        searchParams: Promise.resolve({}),
+      })
+    ).rejects.toBe(redirectError)
+    expect(getTaskDetail).not.toHaveBeenCalled()
   })
 
   it("loads the task by its id and renders TaskDetailView with it", async () => {

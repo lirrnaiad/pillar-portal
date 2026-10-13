@@ -6,20 +6,25 @@
 // The CSP is static (no nonce). That means `'unsafe-inline'` for scripts,
 // which Next's inline bootstrap needs, and `'unsafe-eval'` in development,
 // which React needs for debugging. The only other origin allowed is Supabase,
-// over http(s) and ws(s) for Realtime. The Vercel toolbar on previews is
-// blocked, which is accepted.
+// over http(s) and ws(s) for Realtime, plus Google in `form-action`. The
+// Vercel toolbar on previews is blocked, which is accepted.
+//
+// `form-action` (Story 2.1): before hydration, Sign in with Google is a plain
+// form post whose Server Action answers 303 to Supabase's /authorize, which
+// redirects to accounts.google.com, and CSP checks every hop of a form
+// submission's redirects. After hydration the action's external redirect is
+// a hard navigation, which `form-action` doesn't cover.
 //
 // Later stories widen this on purpose, in the same change as the feature:
 // - Turnstile (Epic 7): https://challenges.cloudflare.com in `script-src`
 //   and in a new `frame-src`.
-// - OAuth sign-in (Story 2.1): a form-submitted Server Action that redirects
-//   to the provider can be blocked by `form-action 'self'`; check the flow in
-//   a browser and allow the provider's origin only if it is.
 // Not here yet: CSP violation reporting (no `report-to`), and HSTS, which
 // Vercel already sends on *.vercel.app; it is decided at go-live for the
 // Pillar domain.
 
 export type SecurityHeader = { key: string; value: string }
+
+const GOOGLE_ACCOUNTS = "https://accounts.google.com"
 
 export function securityHeaders({
   supabaseUrl,
@@ -43,7 +48,7 @@ export function securityHeaders({
     `connect-src 'self' ${supabase} ${supabaseRealtime}`,
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    `form-action 'self' ${supabase} ${GOOGLE_ACCOUNTS}`,
     "frame-ancestors 'none'",
   ]
   if (new URL(siteUrl).protocol === "https:") {

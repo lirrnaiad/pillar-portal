@@ -49,3 +49,7 @@ authenticated public.hand_back_slot(uuid, text)
 # members_active_helper_grant: the one activeness definition, which
 # member_directory calls with the querying role's rights
 authenticated private.is_member_active(uuid)
+
+# members_account_states: the before_user_created Auth hook, run by Supabase
+# Auth's own role (refuses every new account but Google's)
+supabase_auth_admin private.before_user_created(jsonb)

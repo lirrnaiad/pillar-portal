@@ -3,13 +3,71 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
+import { clientEnv } from "@/lib/env.client"
 import { personasEnabled, serverEnv } from "@/lib/env.server"
 import { createClient } from "@/lib/supabase/server"
 
 import type { MemberErrorCode } from "./errors"
 import { PERSONAS } from "./personas"
-import { safeReturnPath } from "./return-path"
+import { loginPath, safeReturnPath } from "./return-path"
 import { personaSignInSchema } from "./schemas"
+
+/**
+ * Starts Google sign-in (AD-7). PKCE: `signInWithOAuth` on the server writes
+ * the code verifier cookie and returns Supabase's authorize URL, which this
+ * redirects to (outside the `try`, since redirect() throws). Google sends
+ * the member back through Supabase to /auth/callback, the only redirect URL,
+ * carrying the form's `next` once `safeReturnPath` has checked it; the
+ * callback checks it again.
+ *
+ * `prompt=select_account` makes Google show its account chooser every time:
+ * otherwise, after Sign out, Google silently signs the same account in
+ * again, and a declined member couldn't try another account.
+ *
+ * Any failure goes back to /login with the "didn't finish" line, keeping
+ * `next`; a returned error (its name, code, status and message only) and a
+ * throw are logged first. `skipBrowserRedirect` is never passed: on the
+ * server the client never redirects by itself.
+ */
+export async function signInWithGoogleAction(
+  formData: FormData
+): Promise<void> {
+  const next = safeReturnPath(formData.get("next"))
+
+  let url: string | null = null
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: new URL(
+          `/auth/callback?next=${encodeURIComponent(next)}`,
+          clientEnv.NEXT_PUBLIC_SITE_URL
+        ).href,
+        queryParams: { prompt: "select_account" },
+      },
+    })
+    if (error) {
+      const { name, code, status, message } = error
+      console.error(
+        "signInWithGoogleAction: signInWithOAuth returned an error",
+        {
+          name,
+          code,
+          status,
+          message,
+        }
+      )
+    } else if (data.url) {
+      url = data.url
+    }
+  } catch (error) {
+    console.error("signInWithGoogleAction: signInWithOAuth threw", error)
+  }
+
+  if (url === null) redirect(loginPath({ next, error: true }))
+  redirect(url)
+}
 
 /** What the persona form shows after a failed attempt; success redirects. */
 export type PersonaSignInState = { ok: false; code: MemberErrorCode } | null
@@ -60,8 +118,13 @@ export async function signInAsPersonaAction(
  * then leaves the session cookies in place. On any failure, returned or
  * thrown, this deletes the browser's auth cookies itself, so the visitor is
  * signed out here even when Auth can't be reached.
+ *
+ * A form that carries a `next` field (the account-state screens on /login)
+ * comes back to /login keeping it, once `safeReturnPath` has checked it, so
+ * a member who switches accounts still reaches the link they opened. Any
+ * other form (MemberMenu's) goes to /login.
  */
-export async function signOutAction(): Promise<void> {
+export async function signOutAction(formData?: FormData): Promise<void> {
   let failed: boolean
   try {
     const supabase = await createClient()
@@ -72,7 +135,11 @@ export async function signOutAction(): Promise<void> {
   }
   if (failed) await deleteAuthCookies()
 
-  redirect("/login")
+  redirect(
+    formData?.has("next")
+      ? loginPath({ next: safeReturnPath(formData.get("next")) })
+      : "/login"
+  )
 }
 
 // The @supabase/ssr session cookies: `sb-<ref>-auth-token`, its `.0`, `.1`...

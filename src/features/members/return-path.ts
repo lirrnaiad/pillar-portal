@@ -35,3 +35,22 @@ export function safeReturnPath(next: unknown): string {
   const path = url.pathname + url.search + url.hash
   return path.startsWith("//") ? FALLBACK : path
 }
+
+/** `/login`'s `error` value for a Google sign-in that didn't finish. */
+export const LOGIN_ERROR_SIGN_IN = "sign-in"
+
+/**
+ * The /login path that keeps `next` (already checked by `safeReturnPath`),
+ * with `error=sign-in` when a sign-in didn't finish. Relative: callers that
+ * need an absolute URL resolve it against NEXT_PUBLIC_SITE_URL.
+ */
+export function loginPath({
+  next,
+  error = false,
+}: {
+  next: string
+  error?: boolean
+}): string {
+  const path = `/login?next=${encodeURIComponent(next)}`
+  return error ? `${path}&error=${LOGIN_ERROR_SIGN_IN}` : path
+}

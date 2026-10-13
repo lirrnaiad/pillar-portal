@@ -2,28 +2,23 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { getCurrentMember, MemberShell, redirect, RedirectError } = vi.hoisted(
-  () => {
-    // Like Next's redirect(), the mock throws, so nothing after it runs.
-    class RedirectError extends Error {
-      constructor(readonly url: string) {
-        super(`NEXT_REDIRECT ${url}`)
-      }
-    }
-    return {
-      getCurrentMember: vi.fn(),
-      MemberShell: vi.fn(() => null),
-      redirect: vi.fn((url: string) => {
-        throw new RedirectError(url)
-      }),
-      RedirectError,
+const { requireActiveMember, MemberShell, RedirectError } = vi.hoisted(() => {
+  // Like Next's redirect(), which requireActiveMember calls, the mock throws.
+  class RedirectError extends Error {
+    constructor(readonly url: string) {
+      super(`NEXT_REDIRECT ${url}`)
     }
   }
-)
+  return {
+    requireActiveMember: vi.fn(),
+    MemberShell: vi.fn(() => null),
+    RedirectError,
+  }
+})
 
-vi.mock("@/features/members", () => ({ getCurrentMember }))
+// requireActiveMember's own tests (queries.test.ts) cover who it redirects.
+vi.mock("@/features/members", () => ({ requireActiveMember }))
 vi.mock("./member-shell", () => ({ MemberShell }))
-vi.mock("next/navigation", () => ({ redirect }))
 
 import type { CurrentMember } from "@/features/members"
 
@@ -33,6 +28,7 @@ const MEMBER = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Head Layout Artist",
   role: "editorial_admin",
+  state: "active",
 } satisfies CurrentMember
 
 afterEach(() => {
@@ -40,27 +36,24 @@ afterEach(() => {
 })
 
 describe("MemberLayout", () => {
-  it.each([
-    ["signed out (no member)", null],
-    ["pending", { ...MEMBER, role: "pending" as const }],
-  ])("sends a %s caller to /login", async (_label, member) => {
-    getCurrentMember.mockResolvedValue(member)
+  it("runs the shared state check, and renders nothing when it redirects", async () => {
+    requireActiveMember.mockRejectedValue(new RedirectError("/login"))
 
     await expect(MemberLayout({ children: null })).rejects.toEqual(
       new RedirectError("/login")
     )
-    expect(redirect).toHaveBeenCalledWith("/login")
+    expect(requireActiveMember).toHaveBeenCalledOnce()
+    expect(MemberShell).not.toHaveBeenCalled()
   })
 
   it.each(["staff", "editorial_admin"] as const)(
     "renders the member shell for an active %s member, with the notice-toast reader mounted before the page",
     async (role) => {
       const member = { ...MEMBER, role }
-      getCurrentMember.mockResolvedValue(member)
+      requireActiveMember.mockResolvedValue(member)
 
       const element = await MemberLayout({ children: "page" })
 
-      expect(redirect).not.toHaveBeenCalled()
       expect(element.type).toBe(MemberShell)
       expect(element.props.member).toEqual(member)
       const children = element.props.children as unknown[]

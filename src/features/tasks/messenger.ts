@@ -32,13 +32,5 @@ export function buildMessengerMessage(
   return `📌 ${task.title} — ${roles.join(" / ")} · due ${formatInPht(task.dueAt, DUE_FORMAT)}\n${link}`
 }
 
-/** Writes to the clipboard; false when there is no access or it is refused. */
-export async function copyText(text: string): Promise<boolean> {
-  try {
-    if (!navigator.clipboard) return false
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    return false
-  }
-}
+// Lives in src/lib so the members slice can copy a link too.
+export { copyText } from "@/lib/clipboard"

@@ -7,7 +7,8 @@
 -- (`supabase test db --linked`), seeded or not. The caller matrix is
 -- table-driven: each row of `callers` is a caller and what they should see,
 -- a DO block records what each one actually sees, and one set_eq compares
--- the two. A later account state (declined, deactivated) is a new row.
+-- the two. Each account state (pending, declined, deactivated, active) is a
+-- row; account_states.test.sql runs the task tables and commands the same way.
 
 begin;
 
@@ -375,12 +376,27 @@ select pg_temp.add_position(
 select pg_temp.add_position(
   '00000000-0000-4000-8000-000000000004', 'online_manager', false
 );
+select pg_temp.new_auth_user(
+  '00000000-0000-4000-8000-000000000006', 'caller-declined@example.com', '{}'
+);
+update public.members set declined_at = now()
+where id = '00000000-0000-4000-8000-000000000006';
+-- A former admin who still holds their Head position.
+select pg_temp.new_auth_user(
+  '00000000-0000-4000-8000-000000000007', 'caller-deactivated@example.com', '{}'
+);
+select pg_temp.add_position(
+  '00000000-0000-4000-8000-000000000007', 'head_cartoonist', true
+);
+update public.members set deactivated_at = now()
+where id = '00000000-0000-4000-8000-000000000007';
 
 -- Each caller, and what they should get:
 --   is_current_member  private.current_member_id() returns their id (else null)
 --   is_active, is_admin, is_top  the other three helpers
---   sees  'own': only their own members row and positions; 'all': every row;
---         'none': no row at all (a signed-in `sub` with no members row)
+--   sees  'own': only their own members row, and their own positions while
+--         active; 'all': every row; 'none': no row at all (a signed-in `sub`
+--         with no members row)
 --   sees_org  every sections, desks and positions row (35), or none
 -- `extra_claims` is merged into the JWT claims: role and positions must come
 -- from the tables, never from claims.
@@ -412,7 +428,12 @@ insert into callers values
   ('top editor (Associate Editor)', '00000000-0000-4000-8000-000000000004', '{}',
    true, true, true, true, 'all', true),
   ('signed in, with no members row', '00000000-0000-4000-8000-000000000005',
-   '{}', false, false, false, false, 'none', false);
+   '{}', false, false, false, false, 'none', false),
+  ('declined', '00000000-0000-4000-8000-000000000006', '{}',
+   false, false, false, false, 'own', false),
+  ('deactivated former admin (Head Cartoonist)',
+   '00000000-0000-4000-8000-000000000007', '{}',
+   false, false, false, false, 'own', false);
 
 create temp table expected as
 select c.label,
@@ -426,14 +447,17 @@ select c.label,
          else (select count(*) from public.members)::int
        end as members_seen,
        c.sees <> 'none' as own_member_seen,
-       case c.sees
-         when 'none' then 0
-         when 'own' then (select count(*) from public.member_positions mp
-                          where mp.member_id = c.member_id)::int
-         else (select count(*) from public.member_positions)::int
+       case
+         when c.sees = 'all' then (select count(*) from public.member_positions)::int
+         when c.is_active then (select count(*) from public.member_positions mp
+                                where mp.member_id = c.member_id)::int
+         else 0
        end as positions_seen,
-       (select count(*) from public.member_positions mp
-        where mp.member_id = c.member_id)::int as own_positions_seen,
+       case
+         when c.is_active then (select count(*) from public.member_positions mp
+                                where mp.member_id = c.member_id)::int
+         else 0
+       end as own_positions_seen,
        case when c.sees_org then 35 else 0 end as org_rows,
        true as writes_denied
 from callers c;

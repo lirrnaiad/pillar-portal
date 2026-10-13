@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { safeReturnPath } from "./return-path"
+import { LOGIN_ERROR_SIGN_IN, loginPath, safeReturnPath } from "./return-path"
 
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
@@ -55,5 +55,27 @@ describe("safeReturnPath", () => {
     ["a File", new File(["x"], "next.txt")],
   ])("sends a next that is %s to /dashboard", (_label, next) => {
     expect(safeReturnPath(next)).toBe("/dashboard")
+  })
+})
+
+describe("loginPath", () => {
+  it("keeps next, encoded", () => {
+    expect(loginPath({ next: "/dashboard/tasks/abc?view=x&y=1#h" })).toBe(
+      "/login?next=%2Fdashboard%2Ftasks%2Fabc%3Fview%3Dx%26y%3D1%23h"
+    )
+  })
+
+  it("adds error=sign-in when the sign-in didn't finish", () => {
+    expect(LOGIN_ERROR_SIGN_IN).toBe("sign-in")
+    expect(loginPath({ next: "/dashboard", error: true })).toBe(
+      "/login?next=%2Fdashboard&error=sign-in"
+    )
+  })
+
+  it("round-trips next through the URL parser unchanged", () => {
+    const next = "/dashboard?view=board&owner=desk:layout"
+    const url = new URL(loginPath({ next, error: true }), "https://x.example")
+    expect(url.searchParams.get("next")).toBe(next)
+    expect(url.searchParams.get("error")).toBe("sign-in")
   })
 })

@@ -26,16 +26,56 @@ function readConfig(): Map<string, string> {
   return values
 }
 
+// NEXT_PUBLIC_SITE_URL from .env.example, the local site.
+function exampleSiteUrl(): string {
+  const text = readFileSync(new URL("./.env.example", import.meta.url), "utf8")
+  const match = /^NEXT_PUBLIC_SITE_URL=(.+)$/m.exec(text)
+  if (!match) throw new Error(".env.example has no NEXT_PUBLIC_SITE_URL")
+  return match[1].trim()
+}
+
 describe("supabase/config.toml auth settings", () => {
   const config = readConfig()
 
-  it("refuses self sign-up, so every account is a persona or a seeded member", () => {
-    expect(config.get("auth.enable_signup")).toBe("false")
+  it("allows sign-up, which a new member's first Google sign-in needs", () => {
+    expect(config.get("auth.enable_signup")).toBe("true")
+  })
+
+  it("runs the before_user_created hook, which refuses every new user but a Google one", () => {
+    expect(config.get("auth.hook.before_user_created.enabled")).toBe("true")
+    expect(config.get("auth.hook.before_user_created.uri")).toBe(
+      '"pg-functions://postgres/private/before_user_created"'
+    )
+  })
+
+  it("enables Google with its client ID and secret from env substitution only", () => {
+    expect(config.get("auth.external.google.enabled")).toBe("true")
+    expect(config.get("auth.external.google.client_id")).toBe(
+      '"env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"'
+    )
+    expect(config.get("auth.external.google.secret")).toBe(
+      '"env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"'
+    )
+    expect(config.get("auth.external.google.skip_nonce_check")).toBe("false")
+  })
+
+  it("enables no other OAuth provider, and no phone or anonymous sign-in", () => {
+    const enabledProviders = [...config.entries()]
+      .filter(
+        ([key, value]) =>
+          /^(remotes\.[^.]+\.)?auth\.external\.[^.]+\.enabled$/.test(key) &&
+          value === "true"
+      )
+      .map(([key]) => key)
+    expect(enabledProviders).toEqual(["auth.external.google.enabled"])
+    expect(config.get("auth.sms.enable_signup")).toBe("false")
+    expect(config.get("auth.enable_anonymous_sign_ins")).toBe("false")
   })
 
   it("keeps the email provider on, which persona password sign-in needs", () => {
     // `[auth.email] enable_signup = false` turns off the whole email
-    // provider, including signInWithPassword.
+    // provider, including signInWithPassword. The hook refuses email
+    // sign-up instead.
     expect(config.get("auth.email.enable_signup")).toBe("true")
   })
 
@@ -54,10 +94,12 @@ describe("supabase/config.toml auth settings", () => {
     )
   })
 
-  it("uses http://localhost:3000 and its /auth/callback locally", () => {
-    expect(config.get("auth.site_url")).toBe('"http://localhost:3000"')
+  it("uses .env.example's NEXT_PUBLIC_SITE_URL and only its /auth/callback locally", () => {
+    const site = exampleSiteUrl()
+    expect(site).toBe("http://localhost:3000")
+    expect(config.get("auth.site_url")).toBe(JSON.stringify(site))
     expect(config.get("auth.additional_redirect_urls")).toBe(
-      '["http://localhost:3000/auth/callback"]'
+      JSON.stringify([`${site}/auth/callback`])
     )
   })
 

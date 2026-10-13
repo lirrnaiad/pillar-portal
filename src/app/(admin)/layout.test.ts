@@ -2,28 +2,23 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { getCurrentMember, AdminShell, redirect, RedirectError } = vi.hoisted(
-  () => {
-    // Like Next's redirect(), the mock throws, so nothing after it runs.
-    class RedirectError extends Error {
-      constructor(readonly url: string) {
-        super(`NEXT_REDIRECT ${url}`)
-      }
-    }
-    return {
-      getCurrentMember: vi.fn(),
-      AdminShell: vi.fn(() => null),
-      redirect: vi.fn((url: string) => {
-        throw new RedirectError(url)
-      }),
-      RedirectError,
+const { requireAdmin, AdminShell, RedirectError } = vi.hoisted(() => {
+  // Like Next's redirect(), which requireAdmin calls, the mock throws.
+  class RedirectError extends Error {
+    constructor(readonly url: string) {
+      super(`NEXT_REDIRECT ${url}`)
     }
   }
-)
+  return {
+    requireAdmin: vi.fn(),
+    AdminShell: vi.fn(() => null),
+    RedirectError,
+  }
+})
 
-vi.mock("@/features/members", () => ({ getCurrentMember }))
+// require-admin.test.ts covers who requireAdmin redirects, and where.
+vi.mock("./require-admin", () => ({ requireAdmin }))
 vi.mock("./admin-shell", () => ({ AdminShell }))
-vi.mock("next/navigation", () => ({ redirect }))
 
 import type { CurrentMember } from "@/features/members"
 
@@ -33,6 +28,7 @@ const MEMBER = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Editor-in-Chief",
   role: "editorial_admin",
+  state: "active",
 } satisfies CurrentMember
 
 afterEach(() => {
@@ -40,33 +36,24 @@ afterEach(() => {
 })
 
 describe("AdminLayout", () => {
-  it.each([
-    ["signed out (no member)", null],
-    ["pending", { ...MEMBER, role: "pending" as const }],
-  ])("sends a %s caller to /login", async (_label, member) => {
-    getCurrentMember.mockResolvedValue(member)
+  it.each(["/login", "/dashboard?notice=admin-restricted"])(
+    "runs the admin check, and renders nothing when it redirects to %s",
+    async (url) => {
+      requireAdmin.mockRejectedValue(new RedirectError(url))
 
-    await expect(AdminLayout({ children: null })).rejects.toEqual(
-      new RedirectError("/login")
-    )
-    expect(redirect).toHaveBeenCalledWith("/login")
-  })
-
-  it("sends an active staff member to /dashboard with the admin-restricted notice", async () => {
-    getCurrentMember.mockResolvedValue({ ...MEMBER, role: "staff" as const })
-
-    await expect(AdminLayout({ children: null })).rejects.toEqual(
-      new RedirectError("/dashboard?notice=admin-restricted")
-    )
-    expect(redirect).toHaveBeenCalledWith("/dashboard?notice=admin-restricted")
-  })
+      await expect(AdminLayout({ children: null })).rejects.toEqual(
+        new RedirectError(url)
+      )
+      expect(requireAdmin).toHaveBeenCalledOnce()
+      expect(AdminShell).not.toHaveBeenCalled()
+    }
+  )
 
   it("renders the admin shell for an active editorial_admin member", async () => {
-    getCurrentMember.mockResolvedValue(MEMBER)
+    requireAdmin.mockResolvedValue(MEMBER)
 
     const element = await AdminLayout({ children: "page" })
 
-    expect(redirect).not.toHaveBeenCalled()
     expect(element.type).toBe(AdminShell)
     expect(element.props).toEqual({ member: MEMBER, children: "page" })
   })
