@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 
 import { AppHeader } from "@/components/app-header"
 import {
+  ACCOUNT_STATE_COPY,
   AccountStateNotice,
   detectInAppBrowser,
   getCurrentMember,
@@ -18,8 +19,17 @@ import {
 import { clientEnv } from "@/lib/env.client"
 import { personasEnabled } from "@/lib/env.server"
 
-export const metadata: Metadata = {
-  title: "Sign in · The Pillar Portal",
+// The title names what the page shows (WCAG 2.4.2): a member who isn't
+// active sees their state's title, everyone else "Sign in" (an active member
+// is sent on before this matters). getCurrentMember is cached per request,
+// so this and the page share one query.
+export async function generateMetadata(): Promise<Metadata> {
+  const member = await getCurrentMember()
+  const title =
+    member && member.state !== "active"
+      ? ACCOUNT_STATE_COPY[member.state].title
+      : "Sign in"
+  return { title: `${title} · The Pillar Portal` }
 }
 
 // Sign-in and account states (UX-DR52, AD-7).
@@ -29,7 +39,8 @@ export const metadata: Metadata = {
 // caller's own members row decides what renders:
 // - an active member goes straight to `next` (or /dashboard), so there's no
 //   redirect loop with the member and admin pages' state check;
-// - a pending, declined or deactivated member sees their state and Sign out;
+// - a pending, declined or deactivated member sees their state and Sign out,
+//   which keeps `next` for the account they switch to;
 // - anyone else gets Sign in with Google, or, inside Messenger's or
 //   Facebook's in-app browser (from the user agent), the hand-off to the
 //   phone's browser, since Google refuses sign-in there. `error=sign-in`
@@ -44,7 +55,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
   let content: React.ReactNode
   if (member) {
-    content = <AccountStateNotice state={member.state} />
+    content = <AccountStateNotice state={member.state} next={returnPath} />
   } else {
     const inApp = detectInAppBrowser((await headers()).get("user-agent"))
     content = (

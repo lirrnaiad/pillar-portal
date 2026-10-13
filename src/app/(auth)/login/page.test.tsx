@@ -74,7 +74,7 @@ vi.mock("next/headers", () => ({
 }))
 vi.mock("next/navigation", () => ({ redirect }))
 
-import LoginPage from "./page"
+import LoginPage, { generateMetadata } from "./page"
 
 const UA = {
   safariIos:
@@ -318,6 +318,10 @@ describe("LoginPage, a member who isn't active", () => {
       const signOut = screen.getByRole("button", { name: "Sign out" })
       expect(signOut).toHaveAttribute("type", "submit")
       expect(signOut).toHaveClass("min-h-11")
+      // Sign out keeps the checked next for the account they switch to.
+      expect(
+        signOut.closest("form")!.querySelector('input[name="next"]')
+      ).toHaveValue("checked:/dashboard")
       expect(googleButton()).not.toBeInTheDocument()
       expect(await axeViolations(container)).toEqual([])
     }
@@ -419,5 +423,28 @@ describe("LoginPage inside an in-app browser", () => {
     ).toBeInTheDocument()
     expect(googleButton()).not.toBeInTheDocument()
     expect(await axeViolations(container)).toEqual([])
+  })
+})
+
+describe("LoginPage's title", () => {
+  it.each([
+    ["pending", "pending", "Awaiting approval · The Pillar Portal"],
+    ["declined", "pending", "Access declined · The Pillar Portal"],
+    ["deactivated", "editorial_admin", "No access · The Pillar Portal"],
+  ] as const)("names a %s member's state", async (state, role, title) => {
+    getCurrentMember.mockResolvedValue({ ...MEMBER, role, state })
+
+    await expect(generateMetadata()).resolves.toEqual({ title })
+  })
+
+  it.each([
+    ["signed out", null],
+    ["an active member", MEMBER],
+  ])("is Sign in for %s", async (_label, member) => {
+    getCurrentMember.mockResolvedValue(member)
+
+    await expect(generateMetadata()).resolves.toEqual({
+      title: "Sign in · The Pillar Portal",
+    })
   })
 })

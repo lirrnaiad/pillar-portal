@@ -81,6 +81,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+  // Puts back console.error after the tests that spy on it.
+  vi.restoreAllMocks()
   vi.unstubAllEnvs()
 })
 
@@ -211,6 +213,7 @@ describe("signInWithGoogleAction", () => {
       options: {
         redirectTo:
           "https://pillar.example/auth/callback?next=%2Fdashboard%2Ftasks%2FX%3Fa%3D1%26b%3D2",
+        queryParams: { prompt: "select_account" },
       },
     })
     expect(redirect).toHaveBeenCalledExactlyOnceWith(AUTHORIZE_URL)
@@ -225,7 +228,27 @@ describe("signInWithGoogleAction", () => {
 
     const [{ options }] = auth.signInWithOAuth.mock.calls[0]
     expect(options).not.toHaveProperty("skipBrowserRedirect")
-    expect(Object.keys(options)).toEqual(["redirectTo"])
+    expect(Object.keys(options)).toEqual(["redirectTo", "queryParams"])
+  })
+
+  it("asks Google for its account chooser, so after Sign out another account can sign in", async () => {
+    const { signInWithGoogleAction } = await loadActions({ personas: "true" })
+
+    await expect(signInWithGoogleAction(form())).rejects.toThrow(RedirectError)
+
+    expect(auth.signInWithOAuth.mock.calls[0][0].options.queryParams).toEqual({
+      prompt: "select_account",
+    })
+  })
+
+  it("logs nothing when sign-in starts", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {})
+    const { signInWithGoogleAction } = await loadActions({ personas: "true" })
+
+    await expect(signInWithGoogleAction(form())).rejects.toEqual(
+      new RedirectError(AUTHORIZE_URL)
+    )
+    expect(errorLog).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -253,14 +276,31 @@ describe("signInWithGoogleAction", () => {
     )
   })
 
+  const THROWN = new TypeError("boom")
+
   it.each([
     [
       "returns an error",
       () =>
         auth.signInWithOAuth.mockResolvedValue({
           data: { provider: "google", url: null },
-          error: { name: "AuthError", message: "x" },
+          error: Object.assign(new Error("Unsupported provider"), {
+            name: "AuthApiError",
+            code: "validation_failed",
+            status: 400,
+            // Anything else on the error stays out of the log.
+            extra: "not logged",
+          }),
         }),
+      [
+        "signInWithGoogleAction: signInWithOAuth returned an error",
+        {
+          name: "AuthApiError",
+          code: "validation_failed",
+          status: 400,
+          message: "Unsupported provider",
+        },
+      ],
     ],
     [
       "returns no url",
@@ -269,15 +309,18 @@ describe("signInWithGoogleAction", () => {
           data: { provider: "google", url: null },
           error: null,
         }),
+      null,
     ],
     [
       "throws",
-      () => auth.signInWithOAuth.mockRejectedValue(new TypeError("boom")),
+      () => auth.signInWithOAuth.mockRejectedValue(THROWN),
+      ["signInWithGoogleAction: signInWithOAuth threw", THROWN],
     ],
   ])(
     "goes back to /login with the error and next when signInWithOAuth %s",
-    async (_label, fail) => {
+    async (_label, fail, logged) => {
       fail()
+      const errorLog = vi.spyOn(console, "error").mockImplementation(() => {})
       const { signInWithGoogleAction } = await loadActions({ personas: "true" })
 
       await expect(
@@ -288,6 +331,11 @@ describe("signInWithGoogleAction", () => {
         )
       )
       expect(redirect).toHaveBeenCalledOnce()
+      if (logged === null) {
+        expect(errorLog).not.toHaveBeenCalled()
+      } else {
+        expect(errorLog).toHaveBeenCalledExactlyOnceWith(...logged)
+      }
     }
   )
 })
@@ -335,6 +383,56 @@ describe("signOutAction", () => {
         AUTH_COOKIES
       )
       expect(redirect).toHaveBeenCalledExactlyOnceWith("/login")
+    }
+  )
+
+  it("goes to plain /login for a form with no next field (MemberMenu's)", async () => {
+    const { signOutAction } = await loadActions({ personas: "true" })
+
+    await expect(signOutAction(form())).rejects.toThrow(RedirectError)
+
+    expect(redirect).toHaveBeenCalledExactlyOnceWith("/login")
+  })
+
+  it("comes back to /login keeping the form's next (an account-state screen's)", async () => {
+    const { signOutAction } = await loadActions({ personas: "true" })
+
+    await expect(
+      signOutAction(form({ next: "/dashboard/tasks/X?view=board" }))
+    ).rejects.toThrow(RedirectError)
+
+    expect(auth.signOut).toHaveBeenCalledExactlyOnceWith({ scope: "local" })
+    expect(redirect).toHaveBeenCalledExactlyOnceWith(
+      "/login?next=%2Fdashboard%2Ftasks%2FX%3Fview%3Dboard"
+    )
+  })
+
+  it("keeps next after a failed sign-out too, once its cookies are gone", async () => {
+    auth.signOut.mockRejectedValue(new TypeError("fetch failed"))
+    const { signOutAction } = await loadActions({ personas: "true" })
+
+    await expect(
+      signOutAction(form({ next: "/dashboard/tasks/X" }))
+    ).rejects.toThrow(RedirectError)
+
+    expect(cookieStore.delete.mock.calls.map(([name]) => name)).toEqual(
+      AUTH_COOKIES
+    )
+    expect(redirect).toHaveBeenCalledExactlyOnceWith(
+      "/login?next=%2Fdashboard%2Ftasks%2FX"
+    )
+  })
+
+  it.each(["https://evil.example/", "//evil.example", "/.//evil.example", ""])(
+    "keeps /dashboard instead of the hostile next %j",
+    async (next) => {
+      const { signOutAction } = await loadActions({ personas: "true" })
+
+      await expect(signOutAction(form({ next }))).rejects.toThrow(RedirectError)
+
+      expect(redirect).toHaveBeenCalledExactlyOnceWith(
+        "/login?next=%2Fdashboard"
+      )
     }
   )
 })

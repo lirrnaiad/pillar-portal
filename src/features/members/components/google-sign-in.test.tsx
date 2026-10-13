@@ -75,4 +75,42 @@ describe("GoogleSignIn", () => {
     await act(async () => finish())
     await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"))
   })
+
+  it("comes back usable when Back restores the page from the back/forward cache mid-submit", async () => {
+    // The browser left for Google, so the action never finishes here.
+    signInWithGoogleAction.mockImplementation(() => new Promise<void>(() => {}))
+    const user = userEvent.setup()
+    renderOnPage()
+    const googleButton = () =>
+      screen.getByRole("button", { name: "Sign in with Google" })
+
+    await user.click(googleButton())
+    await waitFor(() =>
+      expect(googleButton()).toHaveAttribute("aria-disabled", "true")
+    )
+
+    // An ordinary page load changes nothing.
+    act(() => {
+      window.dispatchEvent(
+        new PageTransitionEvent("pageshow", { persisted: false })
+      )
+    })
+    expect(googleButton()).toHaveAttribute("aria-disabled", "true")
+
+    // A restored page gets a fresh form, nothing pending, still posting next.
+    act(() => {
+      window.dispatchEvent(
+        new PageTransitionEvent("pageshow", { persisted: true })
+      )
+    })
+    await waitFor(() =>
+      expect(googleButton()).not.toHaveAttribute("aria-disabled")
+    )
+    expect(
+      googleButton().closest("form")?.querySelector('input[name="next"]')
+    ).toHaveValue(NEXT)
+
+    await user.click(googleButton())
+    expect(signInWithGoogleAction).toHaveBeenCalledTimes(2)
+  })
 })

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useFormStatus } from "react-dom"
 
 import { Button } from "@/components/ui/button"
@@ -11,10 +12,25 @@ import { signInWithGoogleAction } from "../actions"
  * `next` (already checked by `safeReturnPath`; the action and the callback
  * check it again) in a hidden field. It works before hydration too: the
  * action's redirect is then a 303 the browser follows.
+ *
+ * Coming Back from Google can restore this page from the back/forward cache
+ * with the form's submission still pending, which would leave the button
+ * disabled for good. A restored page (`pageshow` with `persisted`) gets a
+ * fresh form instead, with nothing pending, without reloading the page.
  */
 export function GoogleSignIn({ next }: { next: string }) {
+  const [formKey, setFormKey] = useState(0)
+
+  useEffect(() => {
+    function onPageShow(event: PageTransitionEvent) {
+      if (event.persisted) setFormKey((key) => key + 1)
+    }
+    window.addEventListener("pageshow", onPageShow)
+    return () => window.removeEventListener("pageshow", onPageShow)
+  }, [])
+
   return (
-    <form action={signInWithGoogleAction}>
+    <form key={formKey} action={signInWithGoogleAction}>
       <input type="hidden" name="next" value={next} />
       <GoogleButton />
     </form>

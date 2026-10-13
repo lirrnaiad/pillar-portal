@@ -24,18 +24,44 @@ function redirectTo(path: string) {
 // A cancel (`error=access_denied`), any other `error`, no `code`, a refused
 // exchange (a missing verifier included) or a thrown one goes back to /login
 // with "Sign-in didn't finish", keeping `next`. /auth isn't proxied.
+//
+// Failures are logged, since nothing else would show them: another `error`
+// (its `error`, `error_code` and `error_description` parameters only), a
+// returned exchange error (its name, code, status and message only, never
+// the code or a cookie) and a throw. A cancel is the member's choice and a
+// missing code says nothing more, so those stay silent.
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
   const next = safeReturnPath(params.get("next"))
   const didntFinish = () => redirectTo(loginPath({ next, error: true }))
 
+  const authError = params.get("error")
+  if (authError !== null) {
+    if (authError !== "access_denied") {
+      console.error("GET /auth/callback: Auth sent back an error", {
+        error: authError,
+        error_code: params.get("error_code"),
+        error_description: params.get("error_description"),
+      })
+    }
+    return didntFinish()
+  }
+
   const code = params.get("code")
-  if (params.has("error") || !code) return didntFinish()
+  if (!code) return didntFinish()
 
   try {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (error) return didntFinish()
+    if (error) {
+      console.error("GET /auth/callback: the code exchange returned an error", {
+        name: error.name,
+        code: error.code,
+        status: error.status,
+        message: error.message,
+      })
+      return didntFinish()
+    }
   } catch (error) {
     console.error("GET /auth/callback: the code exchange threw", error)
     return didntFinish()

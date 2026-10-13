@@ -43,8 +43,8 @@ export function detectInAppBrowser(
  * The link that opens `loginUrl` in the phone's own browser: an Android
  * intent for the default browser (with the URL's own scheme), or iOS's
  * `x-safari-https://` / `x-safari-http://` hand-off, which Apple doesn't
- * document (kept only while IOS_SAFARI_HANDOFF says the iPhone check passed).
- * Null on any other platform.
+ * document (shown on iOS while IOS_SAFARI_HANDOFF is on; the real-iPhone
+ * check decides whether it stays). Null on any other platform.
  */
 export function handoffUrl(
   loginUrl: string,

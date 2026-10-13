@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { copyText } from "@/lib/clipboard"
 
 import { IN_APP_COPY } from "../in-app-browser"
@@ -17,6 +19,7 @@ export function CopyLinkButton({ url }: { url: string }) {
   const [copied, setCopied] = useState(false)
   const [manual, setManual] = useState(false)
   const [failures, setFailures] = useState(0)
+  const fieldId = useId()
   const button = useRef<HTMLButtonElement>(null)
   const field = useRef<HTMLInputElement>(null)
 
@@ -56,16 +59,14 @@ export function CopyLinkButton({ url }: { url: string }) {
       </p>
       {manual && (
         <div className="flex flex-col gap-1">
-          <label htmlFor="login-link" className="text-sm font-medium">
-            {IN_APP_COPY.linkToCopy}
-          </label>
-          <input
+          <Label htmlFor={fieldId}>{IN_APP_COPY.linkToCopy}</Label>
+          <Input
             ref={field}
-            id="login-link"
+            id={fieldId}
             type="text"
             readOnly
             value={url}
-            className="min-h-11 w-full rounded-md border border-input bg-background px-2 text-sm"
+            className="min-h-11"
           />
         </div>
       )}

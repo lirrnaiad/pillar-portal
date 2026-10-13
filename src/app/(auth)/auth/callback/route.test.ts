@@ -83,48 +83,107 @@ describe("GET /auth/callback", () => {
     expect(res.headers.get("location")).toBe("https://pillar.example/dashboard")
   })
 
+  it("logs nothing after a successful exchange", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    await call("?code=abc&next=%2Fdashboard")
+
+    expect(errorLog).not.toHaveBeenCalled()
+  })
+
   it.each([
     [
       "the member canceled (error=access_denied)",
-      "?error=access_denied&error_description=x",
+      "?error=access_denied&error_code=access_denied&error_description=x",
+      null,
     ],
-    ["Google or Auth sent another error", "?error=server_error&code=abc"],
-    ["there is no code", ""],
-    ["the code is empty", "?code="],
+    [
+      "Google or Auth sent another error",
+      "?error=server_error&error_code=bad_oauth_state&error_description=OAuth+state+is+invalid&code=abc",
+      {
+        error: "server_error",
+        error_code: "bad_oauth_state",
+        error_description: "OAuth state is invalid",
+      },
+    ],
+    [
+      "Auth sent an error with nothing else",
+      "?error=invalid_request",
+      {
+        error: "invalid_request",
+        error_code: null,
+        error_description: null,
+      },
+    ],
+    ["there is no code", "", null],
+    ["the code is empty", "?code=", null],
   ])(
     "goes back to /login with the error, keeping next, when %s",
-    async (_label, query) => {
+    async (_label, query, logged) => {
+      const errorLog = vi.spyOn(console, "error").mockImplementation(() => {})
       const sep = query === "" ? "?" : "&"
       const res = await call(`${query}${sep}next=%2Fdashboard%3Fview%3Dboard`)
 
       expect(exchangeCodeForSession).not.toHaveBeenCalled()
       expect(res.headers.get("location")).toBe(FAILED("/dashboard?view=board"))
       expect(res.headers.get("cache-control")).toBe("private, no-store")
+      if (logged === null) {
+        expect(errorLog).not.toHaveBeenCalled()
+      } else {
+        // The three parameters only: never next, the code or anything else.
+        expect(errorLog).toHaveBeenCalledExactlyOnceWith(
+          "GET /auth/callback: Auth sent back an error",
+          logged
+        )
+      }
     }
   )
 
   it.each([
-    ["a refused code", { name: "AuthApiError", message: "invalid flow state" }],
+    [
+      "a refused code",
+      Object.assign(
+        new Error("invalid flow state, no valid flow state found"),
+        {
+          name: "AuthApiError",
+          code: "flow_state_not_found",
+          status: 404,
+        }
+      ),
+    ],
     [
       "a missing verifier",
-      {
+      Object.assign(new Error("PKCE code verifier not found in storage."), {
         name: "AuthPKCECodeVerifierMissingError",
-        message: "PKCE code verifier not found in storage.",
-      },
+        code: "pkce_code_verifier_not_found",
+        status: 400,
+      }),
     ],
-  ])("goes back to /login with the error after %s", async (_label, error) => {
-    exchangeCodeForSession.mockResolvedValue({
-      data: { session: null, user: null },
-      error,
-    })
-    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {})
+  ])(
+    "logs the error's name, code, status and message, then goes back to /login, after %s",
+    async (_label, error) => {
+      exchangeCodeForSession.mockResolvedValue({
+        data: { session: null, user: null },
+        error: Object.assign(error, { extra: "not logged" }),
+      })
+      const errorLog = vi.spyOn(console, "error").mockImplementation(() => {})
 
-    const res = await call("?code=abc&next=%2Fdashboard%2Ftasks%2FX")
+      const res = await call("?code=secret-code&next=%2Fdashboard%2Ftasks%2FX")
 
-    expect(res.headers.get("location")).toBe(FAILED("/dashboard/tasks/X"))
-    expect(res.headers.get("cache-control")).toBe("private, no-store")
-    expect(errorLog).not.toHaveBeenCalled()
-  })
+      expect(res.headers.get("location")).toBe(FAILED("/dashboard/tasks/X"))
+      expect(res.headers.get("cache-control")).toBe("private, no-store")
+      expect(errorLog).toHaveBeenCalledExactlyOnceWith(
+        "GET /auth/callback: the code exchange returned an error",
+        {
+          name: error.name,
+          code: error.code,
+          status: error.status,
+          message: error.message,
+        }
+      )
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain("secret-code")
+    }
+  )
 
   it("logs a thrown exchange, then goes back to /login with the error", async () => {
     const thrown = new TypeError("fetch failed")

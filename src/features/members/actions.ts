@@ -20,9 +20,14 @@ import { personaSignInSchema } from "./schemas"
  * carrying the form's `next` once `safeReturnPath` has checked it; the
  * callback checks it again.
  *
+ * `prompt=select_account` makes Google show its account chooser every time:
+ * otherwise, after Sign out, Google silently signs the same account in
+ * again, and a declined member couldn't try another account.
+ *
  * Any failure goes back to /login with the "didn't finish" line, keeping
- * `next`. `skipBrowserRedirect` is never passed: on the server the client
- * never redirects by itself.
+ * `next`; a returned error (its name, code, status and message only) and a
+ * throw are logged first. `skipBrowserRedirect` is never passed: on the
+ * server the client never redirects by itself.
  */
 export async function signInWithGoogleAction(
   formData: FormData
@@ -39,11 +44,25 @@ export async function signInWithGoogleAction(
           `/auth/callback?next=${encodeURIComponent(next)}`,
           clientEnv.NEXT_PUBLIC_SITE_URL
         ).href,
+        queryParams: { prompt: "select_account" },
       },
     })
-    if (!error && data.url) url = data.url
-  } catch {
-    url = null
+    if (error) {
+      const { name, code, status, message } = error
+      console.error(
+        "signInWithGoogleAction: signInWithOAuth returned an error",
+        {
+          name,
+          code,
+          status,
+          message,
+        }
+      )
+    } else if (data.url) {
+      url = data.url
+    }
+  } catch (error) {
+    console.error("signInWithGoogleAction: signInWithOAuth threw", error)
   }
 
   if (url === null) redirect(loginPath({ next, error: true }))
@@ -99,8 +118,13 @@ export async function signInAsPersonaAction(
  * then leaves the session cookies in place. On any failure, returned or
  * thrown, this deletes the browser's auth cookies itself, so the visitor is
  * signed out here even when Auth can't be reached.
+ *
+ * A form that carries a `next` field (the account-state screens on /login)
+ * comes back to /login keeping it, once `safeReturnPath` has checked it, so
+ * a member who switches accounts still reaches the link they opened. Any
+ * other form (MemberMenu's) goes to /login.
  */
-export async function signOutAction(): Promise<void> {
+export async function signOutAction(formData?: FormData): Promise<void> {
   let failed: boolean
   try {
     const supabase = await createClient()
@@ -111,7 +135,11 @@ export async function signOutAction(): Promise<void> {
   }
   if (failed) await deleteAuthCookies()
 
-  redirect("/login")
+  redirect(
+    formData?.has("next")
+      ? loginPath({ next: safeReturnPath(formData.get("next")) })
+      : "/login"
+  )
 }
 
 // The @supabase/ssr session cookies: `sb-<ref>-auth-token`, its `.0`, `.1`...

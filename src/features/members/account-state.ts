@@ -1,10 +1,13 @@
 // A member's account state, read from their own `members` row (never from
-// the token). No imports: pure, so client and server code can both use it.
+// the token). No runtime imports (only the generated role type): pure, so
+// client and server code can both use it.
 //
 // It mirrors `private.is_member_active` (the database's one definition of
 // active): a role other than `pending`, with neither `declined_at` nor
 // `deactivated_at` set. Routing uses it; RLS and the commands still decide
 // what anyone can read or do.
+
+import type { Enums } from "@/lib/supabase/database.types"
 
 export type MemberState = "active" | "pending" | "declined" | "deactivated"
 
@@ -20,7 +23,7 @@ export function memberStateOf({
   declinedAt,
   deactivatedAt,
 }: {
-  role: string
+  role: Enums<"member_role">
   declinedAt: string | null
   deactivatedAt: string | null
 }): MemberState {
