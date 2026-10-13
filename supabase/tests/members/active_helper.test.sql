@@ -25,11 +25,13 @@ select is(
   'is_member_active is security definer, stable, owned by postgres, empty search_path'
 );
 
+-- member_directory calls it, and a view checks EXECUTE against the querying
+-- role, so `authenticated` needs it; `anon` never does.
 select is(
   (select has_function_privilege('authenticated', 'private.is_member_active(uuid)', 'execute')
-       or has_function_privilege('anon', 'private.is_member_active(uuid)', 'execute')),
-  false,
-  'is_member_active is granted to neither authenticated nor anon'
+       and not has_function_privilege('anon', 'private.is_member_active(uuid)', 'execute')),
+  true,
+  'is_member_active is granted to authenticated, not anon'
 );
 
 select is(
