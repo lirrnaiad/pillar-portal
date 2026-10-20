@@ -410,6 +410,14 @@ export type Database = {
       }
     }
     Functions: {
+      approve_member: {
+        Args: {
+          member_id: string
+          positions: string[]
+          primary_position: string
+        }
+        Returns: undefined
+      }
       create_task: {
         Args: {
           description: string
@@ -422,6 +430,7 @@ export type Database = {
         }
         Returns: string
       }
+      decline_member: { Args: { member_id: string }; Returns: undefined }
       hand_back_slot: {
         Args: { reason?: string; slot_id: string }
         Returns: undefined

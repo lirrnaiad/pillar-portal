@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest"
 
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -66,13 +72,33 @@ describe("AdminShell", () => {
     expect(banner.querySelector(".max-w-\\[1440px\\]")).not.toBeNull()
   })
 
-  it("renders Tasks in the sidebar nav, current when on /admin/tasks", () => {
+  it("renders Tasks then Members in the sidebar nav, Tasks current on /admin/tasks", () => {
     renderShell()
     const nav = screen.getByRole("navigation", { name: "Admin" })
-    const link = within(nav).getByRole("link", { name: "Tasks" })
+    const links = within(nav).getAllByRole("link")
 
-    expect(link).toHaveAttribute("href", "/admin/tasks")
-    expect(link).toHaveAttribute("aria-current", "page")
+    expect(
+      links.map((link) => [link.textContent, link.getAttribute("href")])
+    ).toEqual([
+      ["Tasks", "/admin/tasks"],
+      ["Members", "/admin/members"],
+    ])
+    expect(links[0]).toHaveAttribute("aria-current", "page")
+    expect(links[1]).not.toHaveAttribute("aria-current")
+  })
+
+  it("marks Members current on /admin/members", () => {
+    usePathname.mockReturnValue("/admin/members")
+    renderShell()
+    const nav = screen.getByRole("navigation", { name: "Admin" })
+
+    expect(within(nav).getByRole("link", { name: "Members" })).toHaveAttribute(
+      "aria-current",
+      "page"
+    )
+    expect(
+      within(nav).getByRole("link", { name: "Tasks" })
+    ).not.toHaveAttribute("aria-current")
   })
 
   it("offers My dashboard and Sign out in the avatar menu", async () => {
@@ -102,6 +128,9 @@ describe("AdminShell", () => {
       "href",
       "/admin/tasks"
     )
+    expect(
+      within(dialog).getByRole("link", { name: "Members" })
+    ).toHaveAttribute("href", "/admin/members")
   })
 
   it("renders the page content in main", () => {

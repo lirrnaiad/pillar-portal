@@ -5,9 +5,14 @@ import { usePathname } from "next/navigation"
 
 import { cn } from "@/lib/utils"
 
-// Only Tasks is a real link this story (spec-1-5-admin-task-creation.md);
-// later stories add Reports, Recruitment and Members here.
-const NAV_LINKS = [{ label: "Tasks", href: "/admin/tasks" }]
+// EXPERIENCE.md's order is Home · Tasks · Reports · Recruitment · Members.
+// Tasks came first (spec-1-5-admin-task-creation.md) and Members with Story
+// 2.2; Story 2.3 adds Home before Tasks, and later epics Reports and
+// Recruitment between Tasks and Members.
+const NAV_LINKS = [
+  { label: "Tasks", href: "/admin/tasks" },
+  { label: "Members", href: "/admin/members" },
+]
 
 /**
  * The admin nav's links, shared by the sidebar (`lg` and up) and the mobile
