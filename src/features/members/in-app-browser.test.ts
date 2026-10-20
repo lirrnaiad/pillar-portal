@@ -109,11 +109,11 @@ describe("handoffUrl", () => {
 })
 
 describe("the iPhone check's constants", () => {
-  it("start from the story's first drafts", () => {
-    expect(IOS_SAFARI_HANDOFF).toBe(true)
+  it("hold the real-iPhone check's results", () => {
+    expect(IOS_SAFARI_HANDOFF).toBe(false)
     expect(IOS_MENU_STEPS).toEqual({
-      messenger: ["Tap ⋯ at the top right.", "Tap Open in Safari."],
-      facebook: ["Tap ⋯ at the top right.", "Tap Open in Safari."],
+      messenger: ["Tap ⋯ at the top right.", "Tap Open in external browser."],
+      facebook: ["Tap ⋯ at the top right.", "Tap Open in external browser."],
     })
     expect(IOS_SKIP_SETTING).toEqual({ messenger: null, facebook: null })
   })

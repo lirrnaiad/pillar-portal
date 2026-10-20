@@ -43,8 +43,8 @@ export function detectInAppBrowser(
  * The link that opens `loginUrl` in the phone's own browser: an Android
  * intent for the default browser (with the URL's own scheme), or iOS's
  * `x-safari-https://` / `x-safari-http://` hand-off, which Apple doesn't
- * document (shown on iOS while IOS_SAFARI_HANDOFF is on; the real-iPhone
- * check decides whether it stays). Null on any other platform.
+ * document (shown on iOS only while IOS_SAFARI_HANDOFF is on, which the
+ * real-iPhone check turned off). Null on any other platform.
  */
 export function handoffUrl(
   loginUrl: string,
@@ -62,16 +62,19 @@ export function handoffUrl(
   }
 }
 
-// What the real-iPhone check decides (Story 2.1's manual check), recorded in
-// the story's spec:
-// - whether Open in your browser hands off to Safari from both apps;
-// - each app's own menu steps, in the exact words it shows (first draft);
-// - the setting, if any, that opens links in Safari (null: none known).
-export const IOS_SAFARI_HANDOFF = true
+// What the real-iPhone check decided (Story 2.1's manual check, 2026-10-20),
+// recorded in the story's spec:
+// - Open in your browser did nothing in Messenger on an iPhone, so the
+//   hand-off is off and iOS leads with the app's own menu steps;
+// - the steps are Messenger's labels (⋯ at the top right, then "Open in
+//   external browser"); Facebook uses the same Meta in-app browser, so it
+//   gets them too until someone checks from a Facebook post;
+// - no setting that opens links in Safari is known (null).
+export const IOS_SAFARI_HANDOFF = false
 
 export const IOS_MENU_STEPS: Record<InAppApp, readonly string[]> = {
-  messenger: ["Tap ⋯ at the top right.", "Tap Open in Safari."],
-  facebook: ["Tap ⋯ at the top right.", "Tap Open in Safari."],
+  messenger: ["Tap ⋯ at the top right.", "Tap Open in external browser."],
+  facebook: ["Tap ⋯ at the top right.", "Tap Open in external browser."],
 }
 
 export const IOS_SKIP_SETTING: Record<InAppApp, string | null> = {
