@@ -31,8 +31,8 @@ vi.mock("@/features/members/actions", () => ({
 }))
 vi.mock("next/navigation", () => ({ usePathname }))
 
-// jsdom has no PointerEvent capture support, which Radix's Sheet (a Dialog)
-// relies on.
+// jsdom has no PointerEvent capture support, which Radix's DropdownMenu (the
+// avatar menu) relies on.
 Element.prototype.hasPointerCapture ??= () => false
 Element.prototype.setPointerCapture ??= () => {}
 Element.prototype.releasePointerCapture ??= () => {}
@@ -72,33 +72,77 @@ describe("AdminShell", () => {
     expect(banner.querySelector(".max-w-\\[1440px\\]")).not.toBeNull()
   })
 
-  it("renders Tasks then Members in the sidebar nav, Tasks current on /admin/tasks", () => {
+  it("links the logo to Admin home", () => {
+    renderShell()
+    const banner = screen.getByRole("banner")
+    expect(
+      within(banner).getByRole("link", { name: "The Pillar" })
+    ).toHaveAttribute("href", "/admin")
+  })
+
+  it("renders Home, Tasks then Members in the sidebar nav, Tasks current on /admin/tasks", () => {
     renderShell()
     const nav = screen.getByRole("navigation", { name: "Admin" })
     const links = within(nav).getAllByRole("link")
 
+    expect(nav.closest("aside")).toHaveClass("hidden", "lg:block")
     expect(
       links.map((link) => [link.textContent, link.getAttribute("href")])
     ).toEqual([
+      ["Home", "/admin"],
       ["Tasks", "/admin/tasks"],
       ["Members", "/admin/members"],
     ])
-    expect(links[0]).toHaveAttribute("aria-current", "page")
-    expect(links[1]).not.toHaveAttribute("aria-current")
+    expect(links[0]).not.toHaveAttribute("aria-current")
+    expect(links[1]).toHaveAttribute("aria-current", "page")
+    expect(links[2]).not.toHaveAttribute("aria-current")
   })
 
-  it("marks Members current on /admin/members", () => {
-    usePathname.mockReturnValue("/admin/members")
-    renderShell()
-    const nav = screen.getByRole("navigation", { name: "Admin" })
+  it.each([
+    ["/admin", "Home"],
+    ["/admin/tasks", "Tasks"],
+    ["/admin/members", "Members"],
+    ["/admin/members/x", "Members"],
+  ])(
+    "marks only %s's area current, in the sidebar and the tab row alike: %s",
+    (pathname, current) => {
+      usePathname.mockReturnValue(pathname)
+      renderShell()
 
-    expect(within(nav).getByRole("link", { name: "Members" })).toHaveAttribute(
-      "aria-current",
-      "page"
-    )
+      for (const navName of ["Admin", "Admin areas"]) {
+        const nav = screen.getByRole("navigation", { name: navName })
+        for (const name of ["Home", "Tasks", "Members"]) {
+          const link = within(nav).getByRole("link", { name })
+          if (name === current) {
+            expect(link).toHaveAttribute("aria-current", "page")
+          } else {
+            expect(link).not.toHaveAttribute("aria-current")
+          }
+        }
+      }
+    }
+  )
+
+  it("puts the tab row in the header, below lg, and no menu button", () => {
+    renderShell()
+    const header = screen.getByRole("banner")
+    const tabs = within(header).getByRole("navigation", {
+      name: "Admin areas",
+    })
+
+    expect(tabs).toHaveClass("lg:hidden")
     expect(
-      within(nav).getByRole("link", { name: "Tasks" })
-    ).not.toHaveAttribute("aria-current")
+      within(tabs)
+        .getAllByRole("link")
+        .map((link) => link.textContent)
+    ).toEqual(["Home", "Tasks", "Members"])
+    // The avatar menu's trigger is the header's only button.
+    expect(
+      within(header)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label"))
+    ).toEqual(["Head Layout Artist, account"])
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
   it("offers My dashboard and Sign out in the avatar menu", async () => {
@@ -117,20 +161,22 @@ describe("AdminShell", () => {
     await waitFor(() => expect(signOutAction).toHaveBeenCalledOnce())
   })
 
-  it("opens the nav in a Sheet from the header's menu button (the mobile/tablet path)", async () => {
-    const user = userEvent.setup()
-    renderShell()
-
-    await user.click(screen.getByRole("button", { name: "Open admin menu" }))
-    const dialog = await screen.findByRole("dialog")
-
-    expect(within(dialog).getByRole("link", { name: "Tasks" })).toHaveAttribute(
-      "href",
-      "/admin/tasks"
+  it("renders the banners between the header and the content row", () => {
+    render(
+      <AdminShell
+        member={{ name: "Head Layout Artist" }}
+        banners={<p>Banner slot</p>}
+      >
+        <h1>Create a task</h1>
+      </AdminShell>
     )
-    expect(
-      within(dialog).getByRole("link", { name: "Members" })
-    ).toHaveAttribute("href", "/admin/members")
+    const header = screen.getByRole("banner")
+    const banners = screen.getByText("Banner slot")
+    const main = screen.getByRole("main")
+
+    expect(header.nextElementSibling).toBe(banners)
+    expect(banners.nextElementSibling).toContainElement(main)
+    expect(header).not.toContainElement(banners)
   })
 
   it("renders the page content in main", () => {
