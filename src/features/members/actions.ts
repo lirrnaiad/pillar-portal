@@ -1,5 +1,6 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
@@ -10,7 +11,11 @@ import { createClient } from "@/lib/supabase/server"
 import type { MemberErrorCode } from "./errors"
 import { PERSONAS } from "./personas"
 import { loginPath, safeReturnPath } from "./return-path"
-import { personaSignInSchema } from "./schemas"
+import {
+  memberApproveSchema,
+  memberDeclineSchema,
+  personaSignInSchema,
+} from "./schemas"
 
 /**
  * Starts Google sign-in (AD-7). PKCE: `signInWithOAuth` on the server writes
@@ -151,4 +156,70 @@ async function deleteAuthCookies() {
       cookieStore.delete(name)
     }
   }
+}
+
+// AD-3's result shape for the approval commands.
+export type MemberCommandState =
+  | { ok: true; data: { memberId: string } }
+  | { ok: false; code: MemberErrorCode; params?: Record<string, unknown> }
+
+// The codes approve_member and decline_member raise that the page has copy
+// for. Anything else (members.not_admin, the position backstops, a raw
+// database or network error) is members.save_failed.
+const COMMAND_ERROR_CODES: ReadonlySet<MemberErrorCode> = new Set([
+  "auth.not_active",
+  "members.stale",
+  "members.not_found",
+])
+
+function mapError(error: { message: string }): MemberErrorCode {
+  const code = error.message as MemberErrorCode
+  return COMMAND_ERROR_CODES.has(code) ? code : "members.save_failed"
+}
+
+/**
+ * Approves a pending member with their positions and primary (AD-3, AD-4).
+ * approve_member decides whether the caller may and whether the member is
+ * still pending, and the role follows the positions; this only parses, calls
+ * it, maps the error and revalidates the admin area.
+ */
+export async function approveMemberAction(
+  input: unknown
+): Promise<MemberCommandState> {
+  const parsed = memberApproveSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, code: "members.save_failed" }
+  const { memberId, positions, primaryPosition } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("approve_member", {
+    member_id: memberId,
+    positions,
+    primary_position: primaryPosition,
+  })
+  if (error) return { ok: false, code: mapError(error) }
+
+  revalidatePath("/admin", "layout")
+  return { ok: true, data: { memberId } }
+}
+
+/**
+ * Declines a pending member (AD-3, AD-4): decline_member keeps the row and
+ * sets `declined_at`, so their next sign-in shows Access declined. This only
+ * parses, calls it, maps the error and revalidates the admin area.
+ */
+export async function declineMemberAction(
+  input: unknown
+): Promise<MemberCommandState> {
+  const parsed = memberDeclineSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, code: "members.save_failed" }
+  const { memberId } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("decline_member", {
+    member_id: memberId,
+  })
+  if (error) return { ok: false, code: mapError(error) }
+
+  revalidatePath("/admin", "layout")
+  return { ok: true, data: { memberId } }
 }

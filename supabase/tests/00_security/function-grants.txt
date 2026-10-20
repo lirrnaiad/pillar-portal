@@ -53,3 +53,8 @@ authenticated private.is_member_active(uuid)
 # members_account_states: the before_user_created Auth hook, run by Supabase
 # Auth's own role (refuses every new account but Google's)
 supabase_auth_admin private.before_user_created(jsonb)
+
+# members_approval: an admin approves a pending member with positions, or
+# declines them
+authenticated public.approve_member(uuid, text[], text)
+authenticated public.decline_member(uuid)

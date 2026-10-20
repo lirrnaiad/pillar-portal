@@ -5,9 +5,12 @@ import { redirect } from "next/navigation"
 
 import type { Enums } from "@/lib/supabase/database.types"
 import { createClient } from "@/lib/supabase/server"
+import { formatInPht } from "@/lib/time"
 
 import { memberStateOf, type MemberState } from "./account-state"
 import { homeScopeOf, type HomeScope } from "./home-scope"
+import { findLookAlike } from "./look-alike"
+import { groupOfferedPositions, type PositionGroup } from "./position-groups"
 
 export type MemberRole = Enums<"member_role">
 
@@ -110,4 +113,149 @@ export async function getMyHomeScope(): Promise<HomeScope> {
       headsSectionId: row.positions?.heads_section_id ?? null,
     }))
   )
+}
+
+/** A member awaiting approval, as /admin/members lists them. */
+export type PendingMember = {
+  id: string
+  name: string
+  email: string
+  /** When their member row was created: their first sign-in (ISO 8601). */
+  signedInAt: string
+  /** `signedInAt` in PHT, e.g. "Tue, Oct 20, 2026 at 9:05 PM PHT". */
+  signedInLabel: string
+  /** The active member they may be a second account of, else null. */
+  lookAlikeName: string | null
+}
+
+/** An active member on the read-only roster. */
+export type RosterMember = {
+  id: string
+  name: string
+  email: string
+  /** Their positions' titles, the primary first, then in `sort_order`. */
+  positionTitles: string[]
+}
+
+export type MemberApprovalsData = {
+  pending: PendingMember[]
+  roster: RosterMember[]
+  positionGroups: PositionGroup[]
+}
+
+const SIGNED_IN_FORMAT = "EEE, MMM d, yyyy 'at' h:mm a 'PHT'"
+
+/**
+ * What /admin/members shows (Story 2.2), read through RLS as the admin (an
+ * admin reads every `members` and `member_positions` row; anyone else would
+ * get only their own): the members awaiting approval, oldest first; the
+ * active roster by name; and the positions the picker offers, grouped.
+ * Pending means role `pending` with neither `declined_at` nor
+ * `deactivated_at`, active a role other than `pending` with neither, as in
+ * `private.is_member_active`, so declined and deactivated members are in
+ * neither list. Each pending member's look-alike is matched here against the
+ * roster the page already shows, so it adds no query and sends no extra
+ * member data: the page gets only the matched member's name. Throws on any
+ * query error.
+ */
+export async function getMemberApprovals(): Promise<MemberApprovalsData> {
+  const supabase = await createClient()
+
+  const [pendingResult, activeResult, positionsResult] = await Promise.all([
+    supabase
+      .from("members")
+      .select("id, name, email, created_at")
+      .eq("role", "pending")
+      .is("declined_at", null)
+      .is("deactivated_at", null)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
+    supabase
+      .from("members")
+      .select("id, name, email, member_positions(position, is_primary)")
+      .neq("role", "pending")
+      .is("declined_at", null)
+      .is("deactivated_at", null)
+      .order("name", { ascending: true })
+      .order("id", { ascending: true }),
+    supabase
+      .from("positions")
+      .select(
+        "id, title, is_board, is_top_editor, heads_desk_id, heads_section_id, sort_order"
+      )
+      .order("sort_order", { ascending: true }),
+  ])
+
+  for (const [label, result] of [
+    ["pending members", pendingResult],
+    ["active members", activeResult],
+    ["positions", positionsResult],
+  ] as const) {
+    if (result.error) {
+      throw new Error(`getMemberApprovals: reading ${label} failed`, {
+        cause: result.error,
+      })
+    }
+  }
+
+  const positions = new Map(
+    (positionsResult.data ?? []).map((row) => [row.id, row])
+  )
+
+  const roster: RosterMember[] = (activeResult.data ?? []).map((member) => ({
+    id: member.id,
+    name: member.name,
+    email: member.email,
+    positionTitles: member.member_positions
+      .flatMap((held) => {
+        const position = positions.get(held.position)
+        return position ? [{ ...position, isPrimary: held.is_primary }] : []
+      })
+      .toSorted(
+        (a, b) =>
+          Number(b.isPrimary) - Number(a.isPrimary) ||
+          a.sort_order - b.sort_order
+      )
+      .map((position) => position.title),
+  }))
+
+  const pending: PendingMember[] = (pendingResult.data ?? []).map((member) => ({
+    id: member.id,
+    name: member.name,
+    email: member.email,
+    signedInAt: member.created_at,
+    signedInLabel: formatInPht(member.created_at, SIGNED_IN_FORMAT),
+    lookAlikeName: findLookAlike(member, roster)?.name ?? null,
+  }))
+
+  return {
+    pending,
+    roster,
+    positionGroups: groupOfferedPositions(positionsResult.data ?? []),
+  }
+}
+
+/**
+ * Admin home's "Awaiting approval" count (Story 2.3): the members awaiting
+ * approval, for an active editorial_admin. Anyone else, signed out included,
+ * gets 0 without the count query. A failed query throws.
+ */
+export async function countPendingApprovalsForViewer(): Promise<number> {
+  const member = await getCurrentMember()
+  if (member?.state !== "active" || member.role !== "editorial_admin") return 0
+
+  const supabase = await createClient()
+  const { count, error } = await supabase
+    .from("members")
+    .select("id", { count: "exact", head: true })
+    .eq("role", "pending")
+    .is("declined_at", null)
+    .is("deactivated_at", null)
+  if (error) {
+    throw new Error(
+      "countPendingApprovalsForViewer: counting pending members failed",
+      { cause: error }
+    )
+  }
+  return count ?? 0
 }
