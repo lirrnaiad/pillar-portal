@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest"
 
-import { cleanup, render, screen, within } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react"
 import axe from "axe-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -10,6 +16,7 @@ import type { CurrentMember } from "@/features/members"
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
 const {
+  copyText,
   env,
   getCurrentMember,
   redirect,
@@ -24,6 +31,9 @@ const {
     }
   }
   return {
+    // Copy link's clipboard write, refused, so a test can read the link from
+    // the "Link to copy" field that appears instead.
+    copyText: vi.fn(async () => false),
     // PROTOTYPE_PERSONAS as env.server would read it (its own tests cover
     // the parsing).
     env: { personas: undefined as string | undefined },
@@ -60,6 +70,7 @@ vi.mock("@/features/members/actions", () => ({
   signOutAction: vi.fn(),
 }))
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }))
+vi.mock("@/lib/clipboard", () => ({ copyText }))
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
@@ -378,24 +389,26 @@ describe("LoginPage inside an in-app browser", () => {
     expect(await axeViolations(container)).toEqual([])
   })
 
-  it("on iOS, hands off to Safari, then the app's numbered steps and Copy link", async () => {
+  it("on iOS, leads with the app's numbered steps and Copy link, with no hand-off", async () => {
     request.userAgent = UA.messengerIos
     const { container } = await renderLoginPage({
       personas: "true",
       searchParams: { next: "/dashboard/tasks/X" },
     })
 
+    // The real-iPhone check found the x-safari- hand-off does nothing.
     expect(
-      screen.getByRole("link", { name: "Open in your browser" })
-    ).toHaveAttribute("href", `x-safari-${LOGIN_URL}`)
+      screen.queryByRole("link", { name: "Open in your browser" })
+    ).not.toBeInTheDocument()
     const steps = within(screen.getByRole("list")).getAllByRole("listitem")
     expect(steps.map((step) => step.textContent)).toEqual([
       "Tap ⋯ at the top right.",
-      "Tap Open in Safari.",
+      "Tap Open in external browser.",
     ])
-    expect(
-      screen.getByRole("button", { name: "Copy link" })
-    ).toBeInTheDocument()
+    // Copy link carries the full /login?next= URL.
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }))
+    expect(await screen.findByLabelText("Link to copy")).toHaveValue(LOGIN_URL)
+    expect(copyText).toHaveBeenCalledWith(LOGIN_URL)
     expect(screen.queryByText(/Skip this next time/)).not.toBeInTheDocument()
     expect(googleButton()).not.toBeInTheDocument()
     // Personas still render below the notice.
