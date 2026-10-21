@@ -1,20 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories and vi.hoisted run before this file's imports.
-const { createClient, exchangeCodeForSession } = await vi.hoisted(async () => {
-  // Importing next/server throws unless AsyncLocalStorage is on globalThis,
-  // which the Next runtime provides and plain Node doesn't.
-  const { AsyncLocalStorage } = await import("node:async_hooks")
-  globalThis.AsyncLocalStorage ??= AsyncLocalStorage
+const { after, createClient, exchangeCodeForSession, recordErrorEvent } =
+  await vi.hoisted(async () => {
+    // Importing next/server throws unless AsyncLocalStorage is on globalThis,
+    // which the Next runtime provides and plain Node doesn't.
+    const { AsyncLocalStorage } = await import("node:async_hooks")
+    globalThis.AsyncLocalStorage ??= AsyncLocalStorage
 
-  const exchangeCodeForSession = vi.fn()
-  return {
-    exchangeCodeForSession,
-    createClient: vi.fn(async () => ({ auth: { exchangeCodeForSession } })),
-  }
-})
+    const exchangeCodeForSession = vi.fn()
+    return {
+      // Holds each scheduled callback; runAfter() runs them, as Next does
+      // once the response is sent.
+      after: vi.fn<(task: () => unknown) => void>(),
+      exchangeCodeForSession,
+      createClient: vi.fn(async () => ({ auth: { exchangeCodeForSession } })),
+      recordErrorEvent: vi.fn(async () => {}),
+    }
+  })
 
 vi.mock("@/lib/supabase/server", () => ({ createClient }))
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after,
+}))
+vi.mock("@/lib/record-error-event", () => ({ recordErrorEvent }))
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
@@ -197,6 +207,56 @@ describe("GET /auth/callback", () => {
     expect(errorLog).toHaveBeenCalledOnce()
     expect(errorLog.mock.calls[0]).toContain(thrown)
   })
+
+  it("records a thrown exchange after the response, as the route only", async () => {
+    const thrown = new TypeError("fetch failed")
+    exchangeCodeForSession.mockRejectedValue(thrown)
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    await call("?code=secret-code&next=%2Fadmin")
+
+    expect(recordErrorEvent).not.toHaveBeenCalled()
+    expect(after).toHaveBeenCalledOnce()
+    for (const [task] of after.mock.calls) await task()
+    expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(thrown, {
+      route: "route /auth/callback",
+    })
+  })
+
+  it.each([
+    ["a successful exchange", "?code=abc", () => {}],
+    ["a cancel", "?error=access_denied", () => {}],
+    [
+      "another Auth error",
+      "?error=server_error&error_code=bad_oauth_state",
+      () => {},
+    ],
+    ["no code", "", () => {}],
+    [
+      "a refused exchange",
+      "?code=abc",
+      () =>
+        exchangeCodeForSession.mockResolvedValue({
+          data: { session: null, user: null },
+          error: Object.assign(new Error("invalid flow state"), {
+            name: "AuthApiError",
+            code: "flow_state_not_found",
+            status: 404,
+          }),
+        }),
+    ],
+  ])(
+    "records nothing for %s: only a throw is a server fault",
+    async (_label, query, arrange) => {
+      arrange()
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      await call(query)
+
+      expect(after).not.toHaveBeenCalled()
+      expect(recordErrorEvent).not.toHaveBeenCalled()
+    }
+  )
 
   it("checks a hostile next on the failure path too", async () => {
     const res = await call("?error=access_denied&next=%2F%2Fevil.example")

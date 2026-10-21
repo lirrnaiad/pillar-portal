@@ -6,16 +6,25 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 const LOCAL_SUPABASE_URL = "http://127.0.0.1:54321"
 const STAGING_SUPABASE_URL = "https://sxlgelitcaolpiijfwsq.supabase.co"
 const PASSWORD = "a-persona-password-for-tests"
+// The shape of a secret key, built at runtime so no key-shaped literal sits
+// in the source (GitHub's push protection blocks Supabase secrets).
+const SECRET_KEY = "sb_secret_" + "a-key-for-these-tests-only"
 
 type Env = {
   PROTOTYPE_PERSONAS?: string
   PROTOTYPE_PERSONA_PASSWORD?: string
   NEXT_PUBLIC_SUPABASE_URL?: string
+  SUPABASE_SECRET_KEY?: string
 }
 
-// Stubs every variable the module reads (unset unless given), so nothing
-// ambient, such as CI's job env, can change the result.
+// Stubs every variable the module reads (unset unless given, but for a valid
+// secret key and the local Supabase URL), so nothing ambient, such as CI's
+// job env, can change the result.
 async function loadServerEnv(env: Env = {}) {
+  vi.stubEnv(
+    "SUPABASE_SECRET_KEY",
+    "SUPABASE_SECRET_KEY" in env ? env.SUPABASE_SECRET_KEY : SECRET_KEY
+  )
   vi.stubEnv("PROTOTYPE_PERSONAS", env.PROTOTYPE_PERSONAS)
   vi.stubEnv("PROTOTYPE_PERSONA_PASSWORD", env.PROTOTYPE_PERSONA_PASSWORD)
   vi.stubEnv(
@@ -38,6 +47,7 @@ describe("serverEnv", () => {
     expect(Object.keys(serverEnvSchema.shape).sort()).toEqual([
       "PROTOTYPE_PERSONAS",
       "PROTOTYPE_PERSONA_PASSWORD",
+      "SUPABASE_SECRET_KEY",
     ])
   })
 
@@ -45,8 +55,45 @@ describe("serverEnv", () => {
     vi.stubEnv("SOME_UNRELATED_SECRET", "canary-value-1234")
     const { serverEnv, personasEnabled } = await loadServerEnv()
 
-    expect(serverEnv).toEqual({})
+    expect(serverEnv).toEqual({ SUPABASE_SECRET_KEY: SECRET_KEY })
     expect(personasEnabled).toBe(false)
+  })
+
+  it("accepts a secret key", async () => {
+    const { serverEnv } = await loadServerEnv()
+    expect(serverEnv.SUPABASE_SECRET_KEY).toBe(SECRET_KEY)
+  })
+
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["a publishable key", "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"],
+    [
+      "a legacy JWT key",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.c2lnbmF0dXJl",
+    ],
+    ["the bare prefix", "sb_secret_"],
+    ["a key one character short", "sb_secret_" + "a".repeat(15)],
+    ["a key with a space", "sb_secret_" + "a".repeat(16) + " "],
+  ])(
+    "refuses to boot when SUPABASE_SECRET_KEY is %s, naming it",
+    async (_label, value) => {
+      await expect(
+        loadServerEnv({ SUPABASE_SECRET_KEY: value })
+      ).rejects.toThrow(
+        /SUPABASE_SECRET_KEY: must be a secret key \(sb_secret_…\)/
+      )
+    }
+  )
+
+  it("never repeats a refused key's value in the error", async () => {
+    const value = "sb_secret_" + "not valid!".repeat(3)
+    const error = await loadServerEnv({ SUPABASE_SECRET_KEY: value }).catch(
+      (thrown: unknown) => thrown
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).not.toContain(value)
   })
 
   it.each([undefined, "", "false"])(
@@ -147,5 +194,12 @@ describe(".env.example", () => {
     expect(serverEnv.PROTOTYPE_PERSONA_PASSWORD).toBe(
       example.PROTOTYPE_PERSONA_PASSWORD
     )
+  })
+
+  it("names SUPABASE_SECRET_KEY but leaves it empty: each machine copies its own", () => {
+    const example = parseEnv(
+      readFileSync(new URL("../../.env.example", import.meta.url), "utf8")
+    )
+    expect(example).toHaveProperty("SUPABASE_SECRET_KEY", "")
   })
 })

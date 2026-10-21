@@ -198,6 +198,62 @@ describe("eslint architecture rules", { timeout: 30_000 }, () => {
     expect(rules(messages)).toContain("no-restricted-imports")
   })
 
+  const ADMIN_CLIENT = {
+    "src/lib/supabase/admin.ts":
+      "export const createAdminClient = () => null\n",
+  }
+  const USES_ADMIN_CLIENT =
+    'import { createAdminClient } from "@/lib/supabase/admin"\nexport const c = createAdminClient\n'
+
+  it.each([
+    ["a slice action", "src/features/tasks/actions.ts"],
+    ["a page", "src/app/(member)/dashboard/page.tsx"],
+    ["another lib module", "src/lib/other.ts"],
+  ])("reports %s importing the secret-key client", async (_label, file) => {
+    const messages = await lint(
+      { ...ADMIN_CLIENT, [file]: USES_ADMIN_CLIENT },
+      file
+    )
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        ruleId: "import/no-restricted-paths",
+        message: expect.stringContaining(
+          "Only the AD-6 importers may use the secret-key client"
+        ),
+      })
+    )
+  })
+
+  it.each([
+    "src/lib/record-error-event.ts",
+    "src/app/api/health/route.ts",
+    "src/lib/supabase/admin.test.ts",
+  ])("allows %s to import the secret-key client", async (file) => {
+    const messages = await lint(
+      { ...ADMIN_CLIENT, [file]: USES_ADMIN_CLIENT },
+      file
+    )
+    expect(messages).toEqual([])
+  })
+
+  it("keeps the slice zones for the secret-key client's importers", async () => {
+    const messages = await lint(
+      {
+        "src/features/tasks/index.ts": 'export { x } from "./x"\n',
+        "src/features/tasks/x.ts": "export const x = 1\n",
+        "src/lib/record-error-event.ts":
+          'import { x } from "@/features/tasks/x"\nexport const r = x\n',
+      },
+      "src/lib/record-error-event.ts"
+    )
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        ruleId: "import/no-restricted-paths",
+        message: expect.stringContaining("through its index.ts only"),
+      })
+    )
+  })
+
   it("throws at config load for a src/features folder that is not a slice", () => {
     fixture = makeFixture({ "src/features/widgets/index.ts": "export {}\n" })
     expect(() => createConfig(fixture!.root)).toThrow(

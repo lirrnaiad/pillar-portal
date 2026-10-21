@@ -1,3 +1,5 @@
+import { after } from "next/server"
+
 import {
   buildCalendarEvent,
   buildIcs,
@@ -5,6 +7,7 @@ import {
   googleCalendarUrl,
 } from "@/features/tasks"
 import { clientEnv } from "@/lib/env.client"
+import { recordErrorEvent } from "@/lib/record-error-event"
 import { createClient } from "@/lib/supabase/server"
 
 const NO_STORE = "private, no-store"
@@ -22,7 +25,9 @@ function notFound() {
 }
 
 // Read-only (AD-3): the caller's session reads one task, nothing is written.
-// /api isn't proxied, so the session is checked here.
+// /api isn't proxied, so the session is checked here. A throw still answers
+// the same 404; since Next never sees it, it is logged and recorded in
+// error_events after the response.
 export async function GET(
   request: Request,
   ctx: RouteContext<"/api/tasks/[id]/ics">
@@ -62,6 +67,7 @@ export async function GET(
     })
   } catch (error) {
     console.error("GET /api/tasks/[id]/ics failed", error)
+    after(() => recordErrorEvent(error, { route: "route /api/tasks/[id]/ics" }))
     return notFound()
   }
 }

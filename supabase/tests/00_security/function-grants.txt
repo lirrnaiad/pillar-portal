@@ -58,3 +58,12 @@ supabase_auth_admin private.before_user_created(jsonb)
 # declines them
 authenticated public.approve_member(uuid, text[], text)
 authenticated public.decline_member(uuid)
+
+# core_operations: the server's secret-key client starts and ends job runs,
+# records server errors, and pings the database for /api/health
+# (members_bootstrap_admin's private.bootstrap_admin has no grant at all: only
+# the owner runs it)
+service_role public.begin_job_run(text)
+service_role public.end_job_run(bigint, job_status, jsonb)
+service_role public.record_error_event(text, text, text, uuid, text)
+service_role public.health_check()

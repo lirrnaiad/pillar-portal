@@ -1,14 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { createClient, getClaims } = vi.hoisted(() => ({
+const { after, createClient, getClaims, recordErrorEvent } = vi.hoisted(() => ({
+  // Holds each scheduled callback; runAfter() runs them, as Next does once
+  // the response is sent.
+  after: vi.fn<(task: () => unknown) => void>(),
   createClient: vi.fn(),
   getClaims: vi.fn(),
+  recordErrorEvent: vi.fn(async () => {}),
 }))
 
 vi.mock("@/lib/supabase/server", () => ({ createClient }))
+vi.mock("next/server", () => ({ after }))
+vi.mock("@/lib/record-error-event", () => ({ recordErrorEvent }))
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
+
+// The members barrel's actions.ts reads the server-only env, which requires
+// SUPABASE_SECRET_KEY; these tests use none of the actions.
+vi.mock("@/features/members/actions", () => ({}))
 
 import { GET } from "./route"
 
@@ -110,5 +120,34 @@ describe("GET /api/tasks/[id]/ics", () => {
 
     expect(statuses).toEqual([404, 404, 404, 404, 404])
     expect(new Set(bodies).size).toBe(1)
+  })
+
+  it("records a thrown read after the response, and nothing for the other misses", async () => {
+    setup({ data: ROW, error: null }, { data: null, error: null })
+    await call()
+    setup({ data: null, error: { message: "boom" } })
+    await call()
+    expect(after).not.toHaveBeenCalled()
+
+    const thrown = new Error("boom")
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    createClient.mockRejectedValue(thrown)
+    const res = await call()
+    spy.mockRestore()
+
+    expect(res.status).toBe(404)
+    expect(recordErrorEvent).not.toHaveBeenCalled()
+    expect(after).toHaveBeenCalledOnce()
+    for (const [task] of after.mock.calls) await task()
+    expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(thrown, {
+      route: "route /api/tasks/[id]/ics",
+    })
+  })
+
+  it("records nothing for a served file", async () => {
+    setup({ data: ROW, error: null })
+    await call()
+
+    expect(after).not.toHaveBeenCalled()
   })
 })
