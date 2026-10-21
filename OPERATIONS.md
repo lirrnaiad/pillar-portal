@@ -74,13 +74,15 @@ then checked.
    `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY` (a
    dedicated secret key made for this project in the Supabase dashboard,
    added with `--sensitive`). The same project's **Preview** environment
-   needs staging's values, or every preview fails to start:
+   needs staging's values, or every preview build fails:
    `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL` and
    `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for staging, staging's own
    `SUPABASE_SECRET_KEY` (`--sensitive`), and the persona variables
    (`PROTOTYPE_PERSONAS`, `PROTOTYPE_PERSONA_PASSWORD`). Add the app hostname
    as the project's domain and its DNS record in Cloudflare (DNS only, not
-   proxied). Check: `main`
+   proxied). A missing or malformed server variable fails the Vercel build
+   and leaves the live deployment as it was; for the key the build log says
+   `SUPABASE_SECRET_KEY: must be a secret key (sb_secret_…)`. Check: `main`
    deploys to production in `sin1`; `https://<app host>/api/health` returns
    200; `vercel env ls production` shows no `PROTOTYPE_PERSONAS`; `EMAIL_MODE`
    stays `sink` until Story 4.4; previews use the staging project with
@@ -191,7 +193,9 @@ When the Online Manager or the developer changes:
      (API Keys). `vercel env add` refuses a name that already exists, so on
      the Vercel production project run
      `vercel env rm SUPABASE_SECRET_KEY production`, then
-     `vercel env add SUPABASE_SECRET_KEY production --sensitive`. Redeploy,
+     `vercel env add SUPABASE_SECRET_KEY production --sensitive`, pasting
+     the revealed key at the prompt (`echo` would add a newline, and the
+     dashboard's masked text isn't the key; either fails the build). Redeploy,
      check `/api/health` returns 200, then delete the old key in the
      dashboard.
    - Later server secrets (`CRON_SECRET` from Epic 4, the Resend API key):
