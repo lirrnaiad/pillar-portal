@@ -15,6 +15,7 @@ type Env = {
   PROTOTYPE_PERSONA_PASSWORD?: string
   NEXT_PUBLIC_SUPABASE_URL?: string
   SUPABASE_SECRET_KEY?: string
+  VERCEL_ENV?: string
 }
 
 // Stubs every variable the module reads (unset unless given, but for a valid
@@ -27,6 +28,7 @@ async function loadServerEnv(env: Env = {}) {
   )
   vi.stubEnv("PROTOTYPE_PERSONAS", env.PROTOTYPE_PERSONAS)
   vi.stubEnv("PROTOTYPE_PERSONA_PASSWORD", env.PROTOTYPE_PERSONA_PASSWORD)
+  vi.stubEnv("VERCEL_ENV", env.VERCEL_ENV)
   vi.stubEnv(
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_URL" in env
@@ -49,6 +51,14 @@ describe("serverEnv", () => {
       "PROTOTYPE_PERSONA_PASSWORD",
       "SUPABASE_SECRET_KEY",
     ])
+  })
+
+  it("keeps VERCEL_ENV out of the schema, so check:bundle never scans for it", async () => {
+    const { serverEnvSchema, serverEnv } = await loadServerEnv({
+      VERCEL_ENV: "production",
+    })
+    expect(serverEnvSchema.shape).not.toHaveProperty("VERCEL_ENV")
+    expect(serverEnv).not.toHaveProperty("VERCEL_ENV")
   })
 
   it("defaults to personas off and exposes no ambient variables", async () => {
@@ -176,6 +186,53 @@ describe("serverEnv", () => {
       await expect(
         loadServerEnv({ PROTOTYPE_PERSONAS: value })
       ).rejects.toThrow(/PROTOTYPE_PERSONAS: must be "true" or "false"/)
+    }
+  )
+})
+
+describe("isProduction", () => {
+  const PRODUCTION_SUPABASE_URL = "https://abcdefghijklmnopqrst.supabase.co"
+
+  it("is true for a Vercel production deploy on a project other than local or staging", async () => {
+    const { isProduction } = await loadServerEnv({
+      VERCEL_ENV: "production",
+      NEXT_PUBLIC_SUPABASE_URL: PRODUCTION_SUPABASE_URL,
+    })
+    expect(isProduction).toBe(true)
+  })
+
+  it.each([
+    ["the staging project", STAGING_SUPABASE_URL],
+    ["the staging project with a trailing slash", `${STAGING_SUPABASE_URL}/`],
+    ["the local stack at 127.0.0.1", LOCAL_SUPABASE_URL],
+    ["the local stack at localhost", "http://localhost:54321"],
+    ["no Supabase URL", undefined],
+    ["a Supabase URL that doesn't parse", "not-a-url"],
+  ])(
+    "is false for a Vercel production deploy on %s",
+    async (_label, supabaseUrl) => {
+      const { isProduction } = await loadServerEnv({
+        VERCEL_ENV: "production",
+        NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
+      })
+      expect(isProduction).toBe(false)
+    }
+  )
+
+  it.each([
+    ["preview", "preview"],
+    ["development", "development"],
+    ["empty", ""],
+    ["unset", undefined],
+    ["Production, in another case", "Production"],
+  ])(
+    "is false on another project when VERCEL_ENV is %s",
+    async (_label, vercelEnv) => {
+      const { isProduction } = await loadServerEnv({
+        VERCEL_ENV: vercelEnv,
+        NEXT_PUBLIC_SUPABASE_URL: PRODUCTION_SUPABASE_URL,
+      })
+      expect(isProduction).toBe(false)
     }
   )
 })
