@@ -9,7 +9,8 @@ import { z } from "zod"
 // Prototype personas (AD-7) may be on only against the local Supabase stack
 // or the staging project, never production. A Vercel deploy can't tell
 // staging from production by VERCEL_ENV (staging is a production deploy of
-// its own project), so the rule follows the Supabase project instead.
+// its own project), so the rule follows the Supabase project instead, as
+// `isProduction` below does.
 const STAGING_SUPABASE_ORIGIN = "https://sxlgelitcaolpiijfwsq.supabase.co"
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1"])
 const PERSONA_PASSWORD_MIN_LENGTH = 16
@@ -48,13 +49,29 @@ export const serverEnvSchema = z.object({
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>
 
-function isPersonaProject(supabaseUrl: string | undefined) {
+// The local stack or the staging project: where personas may run, and never
+// production. False for a missing or unparseable URL.
+function isLocalOrStagingProject(supabaseUrl: string | undefined) {
   if (supabaseUrl === undefined || !URL.canParse(supabaseUrl)) return false
   const url = new URL(supabaseUrl)
   return (
     url.origin === STAGING_SUPABASE_ORIGIN ||
     (LOCAL_HOSTNAMES.has(url.hostname) &&
       (url.protocol === "http:" || url.protocol === "https:"))
+  )
+}
+
+// A Vercel production deploy on a Supabase project other than the local stack
+// or staging: production itself.
+function isProductionDeploy(
+  vercelEnv: string | undefined,
+  supabaseUrl: string | undefined
+) {
+  return (
+    vercelEnv === "production" &&
+    supabaseUrl !== undefined &&
+    URL.canParse(supabaseUrl) &&
+    !isLocalOrStagingProject(supabaseUrl)
   )
 }
 
@@ -70,7 +87,7 @@ const problems = parsed.success
 // of the schema: it belongs in the browser bundle, so check:bundle must not
 // scan for it.
 if (parsed.success && parsed.data.PROTOTYPE_PERSONAS === "true") {
-  if (!isPersonaProject(process.env.NEXT_PUBLIC_SUPABASE_URL)) {
+  if (!isLocalOrStagingProject(process.env.NEXT_PUBLIC_SUPABASE_URL)) {
     problems.push(
       `  - PROTOTYPE_PERSONAS: must not be "true" unless NEXT_PUBLIC_SUPABASE_URL is the local stack (localhost or 127.0.0.1) or the staging project (${STAGING_SUPABASE_ORIGIN})`
     )
@@ -92,3 +109,20 @@ export const serverEnv: ServerEnv = parsed.data
 
 /** Persona sign-in is on (AD-7). Boot has already refused it off-project. */
 export const personasEnabled = serverEnv.PROTOTYPE_PERSONAS === "true"
+
+/**
+ * This is production: a Vercel production deploy (`VERCEL_ENV` is
+ * `production`) whose Supabase project is neither the local stack nor
+ * staging. `VERCEL_ENV` alone can't tell, since staging is a production
+ * deploy of its own Vercel project. Only production is backed up, so only
+ * production shows the backup banner.
+ *
+ * `VERCEL_ENV` is read here, like NEXT_PUBLIC_SUPABASE_URL above, but stays
+ * out of the schema: check:bundle byte-matches every schema value of 8 or
+ * more characters, so "production" would match the bundles, and CI would need
+ * a canary for it.
+ */
+export const isProduction = isProductionDeploy(
+  process.env.VERCEL_ENV,
+  process.env.NEXT_PUBLIC_SUPABASE_URL
+)
