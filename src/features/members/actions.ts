@@ -3,9 +3,14 @@
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import { after } from "next/server"
 
 import { clientEnv } from "@/lib/env.client"
 import { personasEnabled, serverEnv } from "@/lib/env.server"
+import {
+  type ErrorEventWhere,
+  recordErrorEvent,
+} from "@/lib/record-error-event"
 import { createClient } from "@/lib/supabase/server"
 
 import type { MemberErrorCode } from "./errors"
@@ -16,6 +21,10 @@ import {
   memberDeclineSchema,
   personaSignInSchema,
 } from "./schemas"
+
+const GOOGLE_SIGN_IN: ErrorEventWhere = {
+  route: "action signInWithGoogleAction",
+}
 
 /**
  * Starts Google sign-in (AD-7). PKCE: `signInWithOAuth` on the server writes
@@ -31,8 +40,11 @@ import {
  *
  * Any failure goes back to /login with the "didn't finish" line, keeping
  * `next`; a returned error (its name, code, status and message only) and a
- * throw are logged first. `skipBrowserRedirect` is never passed: on the
- * server the client never redirects by itself.
+ * throw are logged first, and recorded in error_events after the response
+ * (the code and this action only), since both are server faults no visitor
+ * causes.
+ * `skipBrowserRedirect` is never passed: on the server the client never
+ * redirects by itself.
  */
 export async function signInWithGoogleAction(
   formData: FormData
@@ -63,11 +75,13 @@ export async function signInWithGoogleAction(
           message,
         }
       )
+      after(() => recordErrorEvent(error, GOOGLE_SIGN_IN))
     } else if (data.url) {
       url = data.url
     }
   } catch (error) {
     console.error("signInWithGoogleAction: signInWithOAuth threw", error)
+    after(() => recordErrorEvent(error, GOOGLE_SIGN_IN))
   }
 
   if (url === null) redirect(loginPath({ next, error: true }))
@@ -165,16 +179,23 @@ export type MemberCommandState =
 
 // The codes approve_member and decline_member raise that the page has copy
 // for. Anything else (members.not_admin, the position backstops, a raw
-// database or network error) is members.save_failed.
+// database or network error) is members.save_failed, and is recorded in
+// error_events after the response (code, action, member id only). A parse
+// failure never gets here: anyone can send one, so it isn't recorded.
 const COMMAND_ERROR_CODES: ReadonlySet<MemberErrorCode> = new Set([
   "auth.not_active",
   "members.stale",
   "members.not_found",
 ])
 
-function mapError(error: { message: string }): MemberErrorCode {
+function mapError(
+  error: { message: string },
+  where: ErrorEventWhere
+): MemberErrorCode {
   const code = error.message as MemberErrorCode
-  return COMMAND_ERROR_CODES.has(code) ? code : "members.save_failed"
+  if (COMMAND_ERROR_CODES.has(code)) return code
+  after(() => recordErrorEvent(error, where))
+  return "members.save_failed"
 }
 
 /**
@@ -196,7 +217,16 @@ export async function approveMemberAction(
     positions,
     primary_position: primaryPosition,
   })
-  if (error) return { ok: false, code: mapError(error) }
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, {
+        route: "action approveMemberAction",
+        entityType: "member",
+        entityId: memberId,
+      }),
+    }
+  }
 
   revalidatePath("/admin", "layout")
   return { ok: true, data: { memberId } }
@@ -218,7 +248,16 @@ export async function declineMemberAction(
   const { error } = await supabase.rpc("decline_member", {
     member_id: memberId,
   })
-  if (error) return { ok: false, code: mapError(error) }
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, {
+        route: "action declineMemberAction",
+        entityType: "member",
+        entityId: memberId,
+      }),
+    }
+  }
 
   revalidatePath("/admin", "layout")
   return { ok: true, data: { memberId } }

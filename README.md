@@ -13,12 +13,18 @@ Requires Node 24, pnpm 12 (`corepack enable` picks up the version pinned in
 pnpm install
 cp .env.example .env.local
 pnpm exec supabase start
+pnpm exec supabase status -o env   # copy SECRET_KEY into SUPABASE_SECRET_KEY in .env.local
 pnpm dev
 ```
 
-The app runs at http://localhost:3000, and `GET /api/health` returns
-`{"status":"ok","timestamp":"..."}`. `/login` offers the prototype personas,
-and `/dashboard` is the member area.
+The app runs at http://localhost:3000. `GET /api/health` returns
+`{"status":"ok","timestamp":"..."}` once the database answers, and 503
+`{"status":"error"}` when it doesn't within 5 seconds. `/login` offers the
+prototype personas, and `/dashboard` is the member area.
+
+Running production (its accounts, the go-live steps, the first-admin
+bootstrap, handover, and reading the error and job records) is in
+[OPERATIONS.md](OPERATIONS.md).
 
 ### Sessions and links
 
@@ -48,7 +54,8 @@ proxied page refreshes again within the 10-second reuse window), and preview
 deploys send signed-out visitors to staging's `/login`, since their
 `NEXT_PUBLIC_SITE_URL` is staging's.
 
-`.env.example` holds working local values. `next dev`, `next build` and
+`.env.example` holds working local values, except `SUPABASE_SECRET_KEY`,
+which each machine copies from its own stack. `next dev`, `next build` and
 `next start` stop with the variable named when a `NEXT_PUBLIC_*` value is
 missing or malformed, and the server refuses to start when a server-only one
 is:
@@ -60,6 +67,7 @@ is:
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | A publishable key (`sb_publishable_...`); a secret key or a legacy JWT key is refused. `.env.example` holds the local stack's fixed demo key |
 | `PROTOTYPE_PERSONAS` | Server-only, optional. `true` turns on persona sign-in; unset or `false` leaves it off. It may be `true` only when `NEXT_PUBLIC_SUPABASE_URL` is the local stack (`localhost` or `127.0.0.1`) or the staging project |
 | `PROTOTYPE_PERSONA_PASSWORD` | Server-only, at least 16 characters; required when personas are on. Locally it must match `supabase/seed.sql` (`.env.example` has the value); staging's is generated and set on Vercel |
+| `SUPABASE_SECRET_KEY` | Server-only, required. A Supabase secret key (`sb_secret_...`); a publishable key or a legacy JWT key is refused. Locally, `SECRET_KEY` from `pnpm exec supabase status -o env` (`.env.example` leaves it empty, so no secret key is ever committed); on Vercel, a dedicated key from the project's dashboard, set for Production and Preview. Only `src/lib/supabase/admin.ts` reads it |
 
 ### Prototype personas
 
@@ -125,7 +133,9 @@ pnpm exec supabase db push
 
 Staging's `NEXT_PUBLIC_SUPABASE_URL` and
 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set on the Vercel project, not in
-this repository, as are `PROTOTYPE_PERSONAS` and `PROTOTYPE_PERSONA_PASSWORD`.
+this repository, as are `PROTOTYPE_PERSONAS`, `PROTOTYPE_PERSONA_PASSWORD` and
+`SUPABASE_SECRET_KEY` (Production and Preview, since a preview deploy needs
+it to start).
 
 Auth settings live in `supabase/config.toml` (`[auth]`, with the staging
 Site URL and redirect in `[remotes.staging]`). Check what would change with
@@ -159,15 +169,15 @@ failing step blocks the merge:
 
 | Command | What it checks |
 |---|---|
-| `pnpm lint` | ESLint, including the architecture rules: only `src/lib/env.server.ts` and `src/lib/env.client.ts` use `process`; no `getSession` anywhere under `src/` (server code gets the caller from `supabase.auth.getClaims()`); no import cycles; slices under `src/features/` are imported only through their `index.ts`; `members`, `files` and `email` import no other slice, and `tasks`, `reports` and `recruitment` may import only `members`, `files` and `email`; nothing outside `src/app` imports `src/app`; only `src/lib/utils.ts` imports the `cn` package (everything else uses `cn` from `@/lib/utils`) |
+| `pnpm lint` | ESLint, including the architecture rules: only `src/lib/env.server.ts` and `src/lib/env.client.ts` use `process`; no `getSession` anywhere under `src/` (server code gets the caller from `supabase.auth.getClaims()`); no import cycles; slices under `src/features/` are imported only through their `index.ts`; `members`, `files` and `email` import no other slice, and `tasks`, `reports` and `recruitment` may import only `members`, `files` and `email`; nothing outside `src/app` imports `src/app`; only `src/lib/utils.ts` imports the `cn` package (everything else uses `cn` from `@/lib/utils`); only the importers AD-6 names import the secret-key client `src/lib/supabase/admin.ts` (today the error recorder and `/api/health`) |
 | `pnpm typecheck` | `next typegen`, then `tsc --noEmit` |
 | `pnpm check:hex` | No hex color in any file under `src/` except `src/app/globals.css`, which holds the design tokens |
 | `pnpm test` | Vitest: unit tests, component tests in jsdom with an axe accessibility check, plus tests that run the lint config and the two check scripts against temp-dir fixture projects |
 | `pnpm exec supabase db start`, then `pnpm exec supabase db reset` | The migrations apply cleanly to a fresh database |
-| `pnpm exec supabase test db` | pgTAP: the catalog test in `supabase/tests/00_security/` (see below), the org reference data in `supabase/tests/core/` (the rows, and that re-running the data migration restores them), and members in `supabase/tests/members/` (the new-user trigger, role derivation, constraints, and a table-driven caller matrix of helper results and RLS visibility) |
+| `pnpm exec supabase test db` | pgTAP: the catalog test in `supabase/tests/00_security/` (see below), `supabase/tests/core/` (the org reference data, and the operations records: who reads `job_runs` and `error_events`, their commands and CHECKs), members in `supabase/tests/members/` (the new-user trigger, role derivation, constraints, a table-driven caller matrix of helper results and RLS visibility, approval and the first-admin bootstrap) and tasks in `supabase/tests/tasks/` |
 | `pnpm db:types && git diff --exit-code -- src/lib/supabase/database.types.ts` | The committed types match the schema. Run `pnpm db:types` after any schema change and commit the result; Prettier leaves the file alone |
 | `pnpm build` | Production build |
-| `pnpm check:bundle` | Browser-facing build output (`.next/static`, and prerendered `.html`, `.rsc` and `.body` files) contains no Supabase secret key and no server-only env value of 8+ characters; run after `pnpm build`. Unset server-only variables are listed as not scanned, and under `CI=true` they fail the check (every server-only variable needs a canary value in CI) |
+| `pnpm check:bundle` | Browser-facing build output (`.next/static`, and prerendered `.html`, `.rsc` and `.body` files) contains no Supabase secret key and no server-only env value of 8+ characters; run after `pnpm build`. It reads `.env.local` when there is one (variables already set in the shell win). Unset server-only variables are listed as not scanned, and under `CI=true` they fail the check (every server-only variable needs a canary value in CI) |
 
 To run the whole gate locally:
 
@@ -243,9 +253,14 @@ Two lists change with the schema, in the same commit as the migration:
 - `src/lib/` shared code, including the two env modules and the security
   headers
 - `src/lib/supabase/` the server client (`server.ts`), the browser client
-  (`client.ts`) and the generated `database.types.ts`
+  (`client.ts`), the secret-key client (`admin.ts`, server-only) and the
+  generated `database.types.ts`
+- `src/lib/record-error-event.ts` records unexpected server errors in
+  `error_events`, keeping only an allowlist of fields (no personal data)
 - `src/components/ui/` shadcn components
-- `src/instrumentation.ts` validates the env modules when the server starts
+- `src/instrumentation.ts` validates the env modules when the server starts,
+  and records every error Next.js captures on the server
 - `supabase/` the CLI config, migrations, `seed.sql` and pgTAP tests
 - `scripts/` the `check:hex` and `check:bundle` scripts, and
   `staging-personas.mjs`
+- `OPERATIONS.md` the production runbook

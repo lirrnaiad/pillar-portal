@@ -1,7 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { after, NextResponse, type NextRequest } from "next/server"
 
 import { loginPath, safeReturnPath } from "@/features/members"
 import { clientEnv } from "@/lib/env.client"
+import { recordErrorEvent } from "@/lib/record-error-event"
 import { createClient } from "@/lib/supabase/server"
 
 const NO_STORE = "private, no-store"
@@ -29,7 +30,10 @@ function redirectTo(path: string) {
 // (its `error`, `error_code` and `error_description` parameters only), a
 // returned exchange error (its name, code, status and message only, never
 // the code or a cookie) and a throw. A cancel is the member's choice and a
-// missing code says nothing more, so those stay silent.
+// missing code says nothing more, so those stay silent. Only the throw is
+// also recorded in error_events (after the response): it is a server fault,
+// while the others follow from the visitor's own sign-in, which anyone can
+// send.
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
   const next = safeReturnPath(params.get("next"))
@@ -64,6 +68,7 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error("GET /auth/callback: the code exchange threw", error)
+    after(() => recordErrorEvent(error, { route: "route /auth/callback" }))
     return didntFinish()
   }
 

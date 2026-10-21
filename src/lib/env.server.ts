@@ -14,6 +14,11 @@ const STAGING_SUPABASE_ORIGIN = "https://sxlgelitcaolpiijfwsq.supabase.co"
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1"])
 const PERSONA_PASSWORD_MIN_LENGTH = 16
 
+// A Supabase secret key: `sb_secret_` and the key. A publishable key or a
+// legacy JWT key (service_role or anon) is refused.
+const SECRET_KEY_PATTERN = /^sb_secret_[A-Za-z0-9_-]{16,}$/
+const SECRET_KEY_MESSAGE = "must be a secret key (sb_secret_…)"
+
 // An empty value (`NAME=` in an env file) counts as unset.
 const optional = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === "" ? undefined : value), schema.optional())
@@ -21,6 +26,13 @@ const optional = <T extends z.ZodType>(schema: T) =>
 // Each key added here needs a canary value in CI so `pnpm check:bundle` can
 // prove it never reaches the browser.
 export const serverEnvSchema = z.object({
+  // The project's secret key, for src/lib/supabase/admin.ts only (AD-6): the
+  // error recorder and /api/health call service_role-only commands with it.
+  // Locally it is the stack's SECRET_KEY (`pnpm exec supabase status -o
+  // env`); on Vercel a dedicated key from the project's dashboard.
+  SUPABASE_SECRET_KEY: z
+    .string({ error: SECRET_KEY_MESSAGE })
+    .regex(SECRET_KEY_PATTERN, { error: SECRET_KEY_MESSAGE }),
   // "true" turns on persona sign-in on /login. Unset means off.
   PROTOTYPE_PERSONAS: optional(
     z.enum(["true", "false"], { error: 'must be "true" or "false"' })

@@ -9,6 +9,10 @@ vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
 
+// The members barrel's actions.ts reads the server-only env, which requires
+// SUPABASE_SECRET_KEY; these tests use none of the actions.
+vi.mock("@/features/members/actions", () => ({}))
+
 import { getPlanner } from "./queries/planner"
 
 afterEach(() => {

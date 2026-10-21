@@ -56,6 +56,26 @@ const sliceZones = [
   })),
 ]
 
+// AD-6: the secret-key client acts as service_role, so only the importers
+// the spine names may use it. Today: the server error recorder and
+// /api/health. Still to come, each added here by its own story: public
+// intake actions, the `files` slice (staging reads and deletes, and the
+// promotion write), the `email` sender, /api/cron/daily and the Resend
+// webhook.
+const ADMIN_CLIENT = "./src/lib/supabase/admin.ts"
+const ADMIN_CLIENT_IMPORTERS = [
+  "src/lib/record-error-event.ts",
+  "src/app/api/health/route.ts",
+  // The client's own test, which checks the key and options it is built
+  // with.
+  "src/lib/supabase/admin.test.ts",
+]
+const adminClientZone = {
+  target: "./src",
+  from: ADMIN_CLIENT,
+  message: "Only the AD-6 importers may use the secret-key client.",
+}
+
 // A folder under src/features/ that isn't a known slice would escape every
 // zone above, so refuse to load the config instead.
 function assertKnownSlices(rootDir) {
@@ -131,6 +151,20 @@ export function createConfig(rootDir) {
         "import/no-restricted-paths": [
           "error",
           { basePath: rootDir, zones: sliceZones },
+        ],
+      },
+    },
+    {
+      // AD-6: everything under src/ but the secret-key client's importers.
+      // `import/no-restricted-paths` options are replaced, not merged, when
+      // two blocks match one file, so this restates the slice zones.
+      name: "pillar/admin-client",
+      files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+      ignores: ADMIN_CLIENT_IMPORTERS,
+      rules: {
+        "import/no-restricted-paths": [
+          "error",
+          { basePath: rootDir, zones: [...sliceZones, adminClientZone] },
         ],
       },
     },

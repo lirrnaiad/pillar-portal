@@ -104,6 +104,66 @@ export type Database = {
         }
         Relationships: []
       }
+      error_events: {
+        Row: {
+          code: string
+          digest: string | null
+          entity_id: string | null
+          entity_type: string | null
+          id: number
+          occurred_at: string
+          route: string
+        }
+        Insert: {
+          code: string
+          digest?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: never
+          occurred_at?: string
+          route: string
+        }
+        Update: {
+          code?: string
+          digest?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: never
+          occurred_at?: string
+          route?: string
+        }
+        Relationships: []
+      }
+      job_runs: {
+        Row: {
+          detail: Json | null
+          finished_at: string | null
+          id: number
+          job: string
+          started_at: string
+          status: Database["public"]["Enums"]["job_status"] | null
+          step: string | null
+        }
+        Insert: {
+          detail?: Json | null
+          finished_at?: string | null
+          id?: never
+          job: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["job_status"] | null
+          step?: string | null
+        }
+        Update: {
+          detail?: Json | null
+          finished_at?: string | null
+          id?: never
+          job?: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["job_status"] | null
+          step?: string | null
+        }
+        Relationships: []
+      }
       member_positions: {
         Row: {
           is_primary: boolean
@@ -418,6 +478,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      begin_job_run: { Args: { job: string }; Returns: number }
       create_task: {
         Args: {
           description: string
@@ -431,10 +492,19 @@ export type Database = {
         Returns: string
       }
       decline_member: { Args: { member_id: string }; Returns: undefined }
+      end_job_run: {
+        Args: {
+          detail?: Json
+          id: number
+          status: Database["public"]["Enums"]["job_status"]
+        }
+        Returns: undefined
+      }
       hand_back_slot: {
         Args: { reason?: string; slot_id: string }
         Returns: undefined
       }
+      health_check: { Args: never; Returns: boolean }
       move_task: {
         Args: {
           task_id: string
@@ -460,6 +530,16 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      record_error_event: {
+        Args: {
+          code: string
+          digest?: string
+          entity_id?: string
+          entity_type?: string
+          route: string
+        }
+        Returns: undefined
+      }
       respond_to_slot: {
         Args: {
           reason?: string
@@ -479,6 +559,7 @@ export type Database = {
       }
     }
     Enums: {
+      job_status: "ok" | "failed" | "skipped"
       member_role: "pending" | "staff" | "editorial_admin"
       production_role:
         | "writer"
@@ -616,6 +697,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      job_status: ["ok", "failed", "skipped"],
       member_role: ["pending", "staff", "editorial_admin"],
       production_role: [
         "writer",

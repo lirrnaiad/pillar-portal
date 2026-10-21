@@ -1,7 +1,12 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 
+import {
+  type ErrorEventWhere,
+  recordErrorEvent,
+} from "@/lib/record-error-event"
 import { createClient } from "@/lib/supabase/server"
 import type { Database } from "@/lib/supabase/database.types"
 import { phtInputToUtc } from "@/lib/time"
@@ -36,7 +41,7 @@ export type MoveTaskState =
 // and the UI has copy for. Any other message — a code the UI never expects
 // (create_task's tasks.no_slots and tasks.invalid_slot_member backstops), a
 // raw database error, a network failure — maps to that action's generic code
-// instead of leaking a raw error to the UI.
+// instead of leaking a raw error to the UI, and is recorded in error_events.
 const CREATE_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
   "auth.not_active",
   "tasks.not_admin",
@@ -53,13 +58,21 @@ const COMMAND_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
 // refine still gets a specific, actionable error instead of the generic one.
 const UNIQUE_VIOLATION = "23505"
 
+// A known code is expected, so it is returned as is. Anything else is
+// unexpected: it is recorded (code, action, entity and id only) after the
+// response, so the toast never waits on it, and the generic code returned.
+// A parse failure never gets here: it is the caller's input, which anyone
+// can send, and recording it would let anyone fill the table.
 function mapError(
   error: { message: string },
   known: ReadonlySet<TaskErrorCode>,
-  fallback: TaskErrorCode
+  fallback: TaskErrorCode,
+  where: ErrorEventWhere
 ): TaskErrorCode {
   const code = error.message as TaskErrorCode
-  return known.has(code) ? code : fallback
+  if (known.has(code)) return code
+  after(() => recordErrorEvent(error, where))
+  return fallback
 }
 
 /**
@@ -109,7 +122,10 @@ export async function createTaskAction(input: unknown): Promise<CreateTaskState>
       code:
         error.code === UNIQUE_VIOLATION
           ? "tasks.duplicate_slot"
-          : mapError(error, CREATE_ERROR_CODES, "tasks.create_failed"),
+          : mapError(error, CREATE_ERROR_CODES, "tasks.create_failed", {
+              route: "action createTaskAction",
+              entityType: "task",
+            }),
     }
   }
 
@@ -142,7 +158,11 @@ export async function respondToSlotAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed"),
+      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
+        route: "action respondToSlotAction",
+        entityType: "task_assignment",
+        entityId: slotId,
+      }),
     }
   }
 
@@ -173,7 +193,11 @@ export async function handBackSlotAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed"),
+      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
+        route: "action handBackSlotAction",
+        entityType: "task_assignment",
+        entityId: slotId,
+      }),
     }
   }
 
@@ -201,7 +225,11 @@ export async function moveTaskAction(input: unknown): Promise<MoveTaskState> {
   if (error) {
     return {
       ok: false,
-      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed"),
+      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
+        route: "action moveTaskAction",
+        entityType: "task",
+        entityId: taskId,
+      }),
     }
   }
 

@@ -15,11 +15,17 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { AdminBanner } from "@/lib/admin-banners"
 
-// The slot reads this list; each test fills it with its fixtures.
-const { sources } = vi.hoisted(() => ({
+// The slot reads this list; each test fills it with its fixtures. `after`
+// holds each scheduled callback; runAfter() runs them, as Next does once the
+// response is sent.
+const { after, recordErrorEvent, sources } = vi.hoisted(() => ({
+  after: vi.fn<(task: () => unknown) => void>(),
+  recordErrorEvent: vi.fn(async () => {}),
   sources: [] as (() => Promise<AdminBanner[]>)[],
 }))
 vi.mock("./admin-banner-sources", () => ({ ADMIN_BANNER_SOURCES: sources }))
+vi.mock("next/server", () => ({ after }))
+vi.mock("@/lib/record-error-event", () => ({ recordErrorEvent }))
 
 import { AdminBanners, AdminBannerSlot } from "./admin-banners"
 
@@ -67,9 +73,14 @@ const barTexts = () =>
     .getAllByRole("paragraph")
     .map((p) => p.textContent)
 
+async function runAfter() {
+  for (const [task] of after.mock.calls) await task()
+}
+
 afterEach(() => {
   cleanup()
   sources.length = 0
+  vi.clearAllMocks()
   vi.restoreAllMocks()
 })
 
@@ -149,6 +160,36 @@ describe("AdminBannerSlot", () => {
 
     expect(barTexts()).toEqual([BACKUP.text, RESET.text])
     expect(consoleError).toHaveBeenCalledExactlyOnceWith(failure)
+  })
+
+  it("records a throwing source's error after the response, by its index", async () => {
+    const failure = new Error("backup source failed")
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    sources.push(
+      async () => [RESET],
+      async () => {
+        throw failure
+      }
+    )
+    await renderSlot()
+
+    expect(recordErrorEvent).not.toHaveBeenCalled()
+    expect(after).toHaveBeenCalledOnce()
+
+    await runAfter()
+    expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(failure, {
+      route: "render admin-banners #1",
+    })
+  })
+
+  it("records nothing when every source answers", async () => {
+    sources.push(
+      async () => [RESET],
+      async () => []
+    )
+    await renderSlot()
+
+    expect(after).not.toHaveBeenCalled()
   })
 
   it("renders nothing, and logs, when the only source throws", async () => {

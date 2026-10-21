@@ -2,14 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { rpc, createClient, revalidatePath } = vi.hoisted(() => ({
-  rpc: vi.fn(),
-  createClient: vi.fn(),
-  revalidatePath: vi.fn(),
-}))
+const { rpc, createClient, revalidatePath, after, recordErrorEvent } =
+  vi.hoisted(() => ({
+    rpc: vi.fn(),
+    createClient: vi.fn(),
+    revalidatePath: vi.fn(),
+    // Holds each scheduled callback; runAfter() runs them, as Next does once
+    // the response is sent.
+    after: vi.fn<(task: () => unknown) => void>(),
+    recordErrorEvent: vi.fn(async () => {}),
+  }))
 
 vi.mock("@/lib/supabase/server", () => ({ createClient }))
 vi.mock("next/cache", () => ({ revalidatePath }))
+vi.mock("next/server", () => ({ after }))
+vi.mock("@/lib/record-error-event", () => ({ recordErrorEvent }))
 // taskCreateSchema (via ./schemas) imports @/features/members for
 // PRODUCTION_ROLE_LABELS, which pulls in the members slice's own
 // supabase/server and env.client imports.
@@ -34,6 +41,10 @@ const VALID_INPUT = {
   dueAt: "2026-10-31T23:30",
   referenceUrl: null,
   slots: [{ role: "layout_artist", memberId: MEMBER_ID }],
+}
+
+async function runAfter() {
+  for (const [task] of after.mock.calls) await task()
 }
 
 beforeEach(() => {
@@ -329,5 +340,145 @@ describe("handBackSlotAction", () => {
 
     expect(result).toEqual({ ok: false, code })
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe("recording unexpected errors", () => {
+  // A raw database error, as PostgREST returns it.
+  const RAW = {
+    code: "42501",
+    message: "permission denied for function move_task",
+    details: null,
+    hint: null,
+  }
+
+  it.each([
+    [
+      "createTaskAction",
+      () => createTaskAction(VALID_INPUT),
+      { route: "action createTaskAction", entityType: "task" },
+    ],
+    [
+      "respondToSlotAction",
+      () => respondToSlotAction({ slotId: SLOT_ID, response: "on_it" }),
+      {
+        route: "action respondToSlotAction",
+        entityType: "task_assignment",
+        entityId: SLOT_ID,
+      },
+    ],
+    [
+      "handBackSlotAction",
+      () => handBackSlotAction({ slotId: SLOT_ID }),
+      {
+        route: "action handBackSlotAction",
+        entityType: "task_assignment",
+        entityId: SLOT_ID,
+      },
+    ],
+    [
+      "moveTaskAction",
+      () => moveTaskAction({ taskId: TASK_ID, toColumn: "doing" }),
+      { route: "action moveTaskAction", entityType: "task", entityId: TASK_ID },
+    ],
+  ])(
+    "%s records an unexpected error after the response, with its action and entity",
+    async (_name, call, where) => {
+      rpc.mockResolvedValue({ data: null, error: RAW })
+
+      const result = await call()
+
+      expect(result).toMatchObject({ ok: false })
+      expect(recordErrorEvent).not.toHaveBeenCalled()
+      expect(after).toHaveBeenCalledOnce()
+
+      await runAfter()
+      expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(RAW, where)
+    }
+  )
+
+  it.each(["tasks.no_slots", "tasks.invalid_slot_member"])(
+    "records create_task's backstop code %s",
+    async (message) => {
+      const error = { code: "P0001", message }
+      rpc.mockResolvedValue({ data: null, error })
+
+      await createTaskAction(VALID_INPUT)
+      await runAfter()
+
+      expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(error, {
+        route: "action createTaskAction",
+        entityType: "task",
+      })
+    }
+  )
+
+  it.each([
+    [
+      "createTaskAction",
+      () => createTaskAction(VALID_INPUT),
+      "tasks.not_admin",
+    ],
+    [
+      "respondToSlotAction",
+      () => respondToSlotAction({ slotId: SLOT_ID, response: "on_it" }),
+      "tasks.not_allowed",
+    ],
+    [
+      "handBackSlotAction",
+      () => handBackSlotAction({ slotId: SLOT_ID }),
+      "tasks.not_found",
+    ],
+    [
+      "moveTaskAction",
+      () => moveTaskAction({ taskId: TASK_ID, toColumn: "doing" }),
+      "auth.not_active",
+    ],
+  ])("%s doesn't record a known code (%s)", async (_name, call, message) => {
+    rpc.mockResolvedValue({ data: null, error: { code: "P0001", message } })
+
+    await call()
+
+    expect(after).not.toHaveBeenCalled()
+    expect(recordErrorEvent).not.toHaveBeenCalled()
+  })
+
+  it("doesn't record task_assignments' duplicate pair (23505), which has its own copy", async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: "23505", message: "duplicate key value" },
+    })
+
+    await createTaskAction(VALID_INPUT)
+
+    expect(after).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["createTaskAction", () => createTaskAction({ ...VALID_INPUT, title: "" })],
+    [
+      "createTaskAction (a due date that can't convert)",
+      () => createTaskAction({ ...VALID_INPUT, dueAt: "2026-02-30T10:00" }),
+    ],
+    ["respondToSlotAction", () => respondToSlotAction({ slotId: "abc" })],
+    ["handBackSlotAction", () => handBackSlotAction({ slotId: "abc" })],
+    [
+      "moveTaskAction",
+      () => moveTaskAction({ taskId: TASK_ID, toColumn: "x" }),
+    ],
+  ])("%s doesn't record a parse failure", async (_name, call) => {
+    await call()
+
+    expect(rpc).not.toHaveBeenCalled()
+    expect(after).not.toHaveBeenCalled()
+    expect(recordErrorEvent).not.toHaveBeenCalled()
+  })
+
+  it("doesn't record a success", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    await moveTaskAction({ taskId: TASK_ID, toColumn: "doing" })
+
+    expect(after).not.toHaveBeenCalled()
   })
 })

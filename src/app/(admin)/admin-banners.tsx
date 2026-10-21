@@ -1,6 +1,9 @@
+import { after } from "next/server"
+
 import { StatusDot } from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
 import { visibleAdminBanners, type AdminBanner } from "@/lib/admin-banners"
+import { recordErrorEvent } from "@/lib/record-error-event"
 
 import { ADMIN_BANNER_SOURCES } from "./admin-banner-sources"
 
@@ -56,7 +59,9 @@ export function AdminBanners({ banners }: { banners: readonly AdminBanner[] }) {
  * Banners are notices, so a failing source fails on its own: its error is
  * logged (the error only) and the banners from the sources that answered
  * still show, rather than one source taking every admin page down. (Admin
- * home's counts, by contrast, still throw to Next's error page.)
+ * home's counts, by contrast, still throw to Next's error page.) Since Next
+ * never sees that error, it is also recorded in error_events after the
+ * response, as `render admin-banners #<index in ADMIN_BANNER_SOURCES>`.
  *
  * It renders without a Suspense boundary of its own on purpose: the layout
  * waits for the sources, so a banner never pops in and shifts the page.
@@ -65,9 +70,14 @@ export async function AdminBannerSlot() {
   const results = await Promise.allSettled(
     ADMIN_BANNER_SOURCES.map((source) => source())
   )
-  const banners = results.flatMap((result) => {
+  const banners = results.flatMap((result, index) => {
     if (result.status === "fulfilled") return result.value
     console.error(result.reason)
+    after(() =>
+      recordErrorEvent(result.reason, {
+        route: `render admin-banners #${index}`,
+      })
+    )
     return []
   })
   return <AdminBanners banners={visibleAdminBanners(banners)} />

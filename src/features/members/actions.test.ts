@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
 const {
+  after,
   auth,
   cookieStore,
   createClient,
+  recordErrorEvent,
   redirect,
   RedirectError,
   revalidatePath,
@@ -38,9 +40,13 @@ const {
   }
   const rpc = vi.fn()
   return {
+    // Holds each scheduled callback; runAfter() runs them, as Next does once
+    // the response is sent.
+    after: vi.fn<(task: () => unknown) => void>(),
     auth,
     cookieStore,
     createClient: vi.fn(async () => ({ auth, rpc })),
+    recordErrorEvent: vi.fn(async () => {}),
     redirect: vi.fn((url: string) => {
       throw new RedirectError(url)
     }),
@@ -54,6 +60,8 @@ vi.mock("@/lib/supabase/server", () => ({ createClient }))
 vi.mock("next/navigation", () => ({ redirect }))
 vi.mock("next/headers", () => ({ cookies: async () => cookieStore }))
 vi.mock("next/cache", () => ({ revalidatePath }))
+vi.mock("next/server", () => ({ after }))
+vi.mock("@/lib/record-error-event", () => ({ recordErrorEvent }))
 // safeReturnPath checks `next` against the site's origin.
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
@@ -62,13 +70,19 @@ vi.mock("@/lib/env.client", () => ({
 const PASSWORD = "a-persona-password-for-tests"
 
 // env.server reads the environment when it loads, so each test stubs it and
-// imports the actions afresh.
+// imports the actions afresh. The secret key is built at runtime so no
+// key-shaped literal sits in the source.
 async function loadActions({ personas }: { personas: string | undefined }) {
+  vi.stubEnv("SUPABASE_SECRET_KEY", "sb_secret_" + "a-key-for-these-tests-only")
   vi.stubEnv("PROTOTYPE_PERSONAS", personas)
   vi.stubEnv("PROTOTYPE_PERSONA_PASSWORD", PASSWORD)
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321")
   vi.resetModules()
   return import("./actions")
+}
+
+async function runAfter() {
+  for (const [task] of after.mock.calls) await task()
 }
 
 function form(fields: Record<string, string> = {}) {
@@ -627,4 +641,137 @@ describe("declineMemberAction", () => {
       ).resolves.toEqual({ ok: false, code: "members.save_failed" })
     }
   )
+})
+
+describe("recording unexpected errors", () => {
+  it.each([
+    [
+      "returns an error",
+      () => {
+        const error = Object.assign(new Error("Unsupported provider"), {
+          name: "AuthApiError",
+          code: "validation_failed",
+          status: 400,
+        })
+        auth.signInWithOAuth.mockResolvedValue({
+          data: { provider: "google", url: null },
+          error,
+        })
+        return error
+      },
+    ],
+    [
+      "throws",
+      () => {
+        const error = new TypeError("fetch failed")
+        auth.signInWithOAuth.mockRejectedValue(error)
+        return error
+      },
+    ],
+  ])(
+    "signInWithGoogleAction records it after the response when signInWithOAuth %s",
+    async (_label, fail) => {
+      const error = fail()
+      vi.spyOn(console, "error").mockImplementation(() => {})
+      const { signInWithGoogleAction } = await loadActions({ personas: "true" })
+
+      await expect(signInWithGoogleAction(form())).rejects.toThrow(
+        RedirectError
+      )
+      expect(recordErrorEvent).not.toHaveBeenCalled()
+      expect(after).toHaveBeenCalledOnce()
+
+      await runAfter()
+      expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(error, {
+        route: "action signInWithGoogleAction",
+      })
+    }
+  )
+
+  it("signInWithGoogleAction records nothing when sign-in starts, or when no url comes back", async () => {
+    const { signInWithGoogleAction } = await loadActions({ personas: "true" })
+    await expect(signInWithGoogleAction(form())).rejects.toThrow(RedirectError)
+
+    auth.signInWithOAuth.mockResolvedValue({
+      data: { provider: "google", url: null },
+      error: null,
+    })
+    await expect(signInWithGoogleAction(form())).rejects.toThrow(RedirectError)
+
+    expect(after).not.toHaveBeenCalled()
+  })
+
+  const RAW = {
+    code: "42501",
+    message: "permission denied for function approve_member",
+    details: null,
+    hint: null,
+  }
+
+  it.each([
+    ["approveMemberAction", "approveMemberAction", APPROVAL],
+    ["declineMemberAction", "declineMemberAction", { memberId: MEMBER_ID }],
+  ] as const)(
+    "%s records an unexpected error after the response, with the member",
+    async (name, action, input) => {
+      rpc.mockResolvedValue({ data: null, error: RAW })
+      const actions = await loadActions({ personas: "true" })
+
+      await expect(actions[action](input)).resolves.toEqual({
+        ok: false,
+        code: "members.save_failed",
+      })
+      expect(recordErrorEvent).not.toHaveBeenCalled()
+      expect(after).toHaveBeenCalledOnce()
+
+      await runAfter()
+      expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(RAW, {
+        route: `action ${name}`,
+        entityType: "member",
+        entityId: MEMBER_ID,
+      })
+    }
+  )
+
+  it("approveMemberAction records a backstop code (members.not_admin)", async () => {
+    const error = { code: "P0001", message: "members.not_admin" }
+    rpc.mockResolvedValue({ data: null, error })
+    const { approveMemberAction } = await loadActions({ personas: "true" })
+
+    await approveMemberAction(APPROVAL)
+    await runAfter()
+
+    expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(error, {
+      route: "action approveMemberAction",
+      entityType: "member",
+      entityId: MEMBER_ID,
+    })
+  })
+
+  it.each(["auth.not_active", "members.stale", "members.not_found"])(
+    "approve and decline don't record a known code (%s)",
+    async (message) => {
+      rpc.mockResolvedValue({ data: null, error: { code: "P0001", message } })
+      const { approveMemberAction, declineMemberAction } = await loadActions({
+        personas: "true",
+      })
+
+      await approveMemberAction(APPROVAL)
+      await declineMemberAction({ memberId: MEMBER_ID })
+
+      expect(after).not.toHaveBeenCalled()
+    }
+  )
+
+  it("approve and decline don't record a parse failure", async () => {
+    const { approveMemberAction, declineMemberAction } = await loadActions({
+      personas: "true",
+    })
+
+    await approveMemberAction({ ...APPROVAL, positions: [] })
+    await declineMemberAction({ memberId: "nope" })
+
+    expect(rpc).not.toHaveBeenCalled()
+    expect(after).not.toHaveBeenCalled()
+  })
 })
