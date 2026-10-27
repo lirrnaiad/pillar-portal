@@ -43,8 +43,9 @@ host. Every `next` the app accepts goes through `safeReturnPath`
 (`src/features/members/return-path.ts`): it keeps a path on the site's own
 origin (never decoding it) and turns anything else, such as another host,
 `//x`, `/.//x` or `javascript:`, into `/dashboard`. An active member who
-opens `/login` goes straight to `next`; pending and rowless callers see the
-sign-in page.
+opens `/login` goes straight to `next`; a pending, declined or deactivated
+member sees their account state there, and a rowless caller sees the sign-in
+page.
 
 Sessions never time out on their own: the cookies keep `@supabase/ssr`'s
 defaults (400 days) and `supabase/config.toml` sets no `[auth.sessions]`
@@ -76,8 +77,9 @@ Artist**, **Head Layout Artist** and **Editor-in-Chief**. Each signs in as a
 shared Supabase Auth user (`src/features/members/personas.ts`) with the
 password only the server holds, under the same RLS as any member. Sign out
 ends only that browser's session, so others using the same persona stay
-signed in. Self sign-up is off in `supabase/config.toml`, so every account is
-a persona or a seeded member.
+signed in. An Auth hook (`private.before_user_created`) refuses every sign-up
+that isn't Google's, so every account is a persona, a seeded member, or a
+Google sign-in waiting for approval.
 
 Staging is public by design: anyone who opens the staging URL can sign in as
 any persona, including the Editor-in-Chief. So staging holds synthetic data
