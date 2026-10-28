@@ -8,9 +8,14 @@ vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
 
-const { slotRespondSchema, taskCreateSchema, taskMoveSchema } = await import(
-  "./schemas"
-)
+const {
+  REVISION_NOTE_MAX,
+  slotRespondSchema,
+  taskCreateSchema,
+  taskMoveSchema,
+  taskReviewSchema,
+  taskSendBackSchema,
+} = await import("./schemas")
 
 const VALID = {
   title: "Lay out the spread",
@@ -239,5 +244,57 @@ describe("taskMoveSchema", () => {
 
   it("refuses a task id that isn't a UUID", () => {
     expect(taskMoveSchema.safeParse({ taskId: "abc", toColumn: "doing" }).success).toBe(false)
+  })
+})
+
+describe("taskReviewSchema", () => {
+  it("accepts a task id", () => {
+    expect(taskReviewSchema.safeParse({ taskId: TASK_ID }).success).toBe(true)
+  })
+
+  it("refuses a task id that isn't a UUID", () => {
+    expect(taskReviewSchema.safeParse({ taskId: "abc" }).success).toBe(false)
+  })
+})
+
+describe("taskSendBackSchema", () => {
+  it("trims the note", () => {
+    expect(
+      taskSendBackSchema.parse({ taskId: TASK_ID, note: "  fix captions \n" })
+    ).toEqual({ taskId: TASK_ID, note: "fix captions" })
+  })
+
+  it.each(["", "   ", "\t\n "])(
+    "refuses the blank note %j with the dialog's copy",
+    (note) => {
+      const result = taskSendBackSchema.safeParse({ taskId: TASK_ID, note })
+      expect(result.success).toBe(false)
+      expect(result.error?.issues).toEqual([
+        expect.objectContaining({
+          path: ["note"],
+          message: "Add a note so they know what to fix.",
+        }),
+      ])
+    }
+  )
+
+  it("caps the note at the database's 5,000 characters, once trimmed", () => {
+    expect(REVISION_NOTE_MAX).toBe(5000)
+    expect(
+      taskSendBackSchema.safeParse({
+        taskId: TASK_ID,
+        note: `  ${"x".repeat(5000)}  `,
+      }).success
+    ).toBe(true)
+    expect(
+      taskSendBackSchema.safeParse({ taskId: TASK_ID, note: "x".repeat(5001) })
+        .success
+    ).toBe(false)
+  })
+
+  it("refuses a task id that isn't a UUID", () => {
+    expect(
+      taskSendBackSchema.safeParse({ taskId: "abc", note: "Fix" }).success
+    ).toBe(false)
   })
 })

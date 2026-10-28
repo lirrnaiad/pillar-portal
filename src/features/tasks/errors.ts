@@ -19,6 +19,17 @@
 // A refused response or move is one the page shouldn't have offered (the
 // page's state was stale), so it gets the same "try again" copy as any other
 // failure, tasks.save_failed, and the page refreshes.
+//
+// mark_done, send_back_task and reopen_task raise tasks.not_approver when the
+// caller isn't the task's approver, and tasks.stale when they are but the
+// task has left the column the command needs (another approver acted
+// first): EXPERIENCE.md's stale line, as the members slice shows it, and the
+// page refreshes. send_back_task's tasks.invalid_note is a backstop
+// taskSendBackSchema keeps the UI from reaching, so it maps to
+// tasks.save_failed.
+const STALE_COPY =
+  "Something changed since you opened this. Review the latest and try again."
+
 export const TASK_ERROR_COPY = {
   "auth.not_active": "Sign in to do that.",
   "tasks.not_admin": "Only the Editorial Board can create tasks.",
@@ -27,6 +38,8 @@ export const TASK_ERROR_COPY = {
   "tasks.not_found": "This task was deleted or the link is wrong.",
   "tasks.not_allowed": "Couldn't save — try again.",
   "tasks.save_failed": "Couldn't save — try again.",
+  "tasks.not_approver": "Only the task's head or a top editor can do that.",
+  "tasks.stale": STALE_COPY,
 } as const
 
 export type TaskErrorCode = keyof typeof TASK_ERROR_COPY

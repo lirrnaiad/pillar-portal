@@ -12,13 +12,17 @@ import { CopyForMessenger } from "./copy-for-messenger"
 import { HandBack } from "./hand-back"
 import { SlotResponse } from "./slot-response"
 import { TaskColumnControl } from "./task-column-control"
+import { TaskReview } from "./task-review"
 
 const DUE_FORMAT = "EEE, MMM d, yyyy 'at' h:mm a"
+const NOTE_DATE_FORMAT = "EEE, MMM d, yyyy"
 
 /**
- * Task detail (EXPERIENCE.md › Task detail): title, column, owner, due date
- * in PHT, reference link, description, then one row per slot. Which actions
- * appear comes only from `task.allowedMoves`, `task.respondableSlotIds` and `task.handBackSlotIds`
+ * Task detail (EXPERIENCE.md › Task detail): title, column (with the revision
+ * note under it while the task stands sent back), owner, due date in PHT,
+ * reference link, description, then one row per slot. Which actions appear
+ * comes only from `task.allowedMoves`, `task.respondableSlotIds`,
+ * `task.handBackSlotIds`, `task.canReview` and `task.canReopen`
  * (task_capabilities, AD-4); nothing here looks at roles, positions or who
  * holds a slot.
  */
@@ -60,9 +64,31 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
         <TaskColumnControl
           taskId={task.id}
           column={task.column}
+          sentBack={task.revisionNote !== null}
           allowedMoves={task.allowedMoves}
         />
       </div>
+
+      {task.revisionNote !== null && (
+        <div className="mt-3 rounded-r-lg border-l-[3px] border-status-attention bg-status-attention-tint px-card-padding py-3">
+          <p className="break-words whitespace-pre-line">
+            {task.revisionNote.text}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            <span className="sr-only">Sent back by </span>
+            {task.revisionNote.byName} ·{" "}
+            <time dateTime={task.revisionNote.at}>
+              {formatInPht(task.revisionNote.at, NOTE_DATE_FORMAT)}
+            </time>
+          </p>
+        </div>
+      )}
+
+      <TaskReview
+        taskId={task.id}
+        canReview={task.canReview}
+        canReopen={task.canReopen}
+      />
 
       {handBackSlots.length > 0 && (
         <div className="mt-3 flex flex-col gap-3">

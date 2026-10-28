@@ -59,6 +59,7 @@ function card(
     dueAt: "2099-01-01T00:00:00+00:00",
     column: "to_do",
     overdue: false,
+    sentBack: false,
     hasAwaitingResponse: false,
     hasNeedsReassignment: false,
     assignees: [],
@@ -241,6 +242,35 @@ describe("TaskBoard", () => {
     )
     expect(within(column("Doing")).queryByText("Lay out the spread")).toBeNull()
     await waitFor(() => expect(moveSelect("Lay out the spread")).toHaveFocus())
+  })
+
+  it('shows a sent-back card\'s new column, not "Sent back", while its move saves, and "Sent back" again once the move is refused', async () => {
+    const user = userEvent.setup()
+    const settle = pendingCall()
+    const sentBack = card(4, {
+      title: "Fix the captions",
+      column: "doing",
+      sentBack: true,
+      allowedMoves: ["for_review"],
+    })
+    render(<TaskBoard cards={[sentBack]} />)
+
+    const cardIn = (label: string) => within(column(label)).getByRole("article")
+    expect(within(cardIn("Doing")).getByText("Sent back")).toBeInTheDocument()
+
+    await chooseMove(user, "Fix the captions", "For Review")
+
+    // Still saving: the move clears the note, so the card reads its new
+    // column.
+    const moved = cardIn("For Review")
+    expect(within(moved).getByText("For Review")).toBeInTheDocument()
+    expect(within(moved).queryByText("Sent back")).toBeNull()
+
+    settle({ ok: false, code: "tasks.not_allowed" })
+    await waitFor(() =>
+      expect(within(cardIn("Doing")).getByText("Sent back")).toBeInTheDocument()
+    )
+    expect(within(column("For Review")).queryByRole("article")).toBeNull()
   })
 
   it("treats a thrown call like a refusal", async () => {

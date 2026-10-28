@@ -26,11 +26,13 @@ begin
 end;
 $$;
 
+-- A Done task carries done_at (tasks_done_at_matches_column).
 create function pg_temp.new_task(p_id uuid, p_column public.task_column)
 returns void
 language sql as $$
-  insert into public.tasks (id, title, owning_desk_id, due_at, "column")
-  values (p_id, 'Fixture task ' || p_id, 'layout', '2026-11-01T00:00:00+08', p_column)
+  insert into public.tasks (id, title, owning_desk_id, due_at, "column", done_at)
+  values (p_id, 'Fixture task ' || p_id, 'layout', '2026-11-01T00:00:00+08', p_column,
+          case when p_column = 'done' then now() end)
 $$;
 
 create function pg_temp.new_slot(

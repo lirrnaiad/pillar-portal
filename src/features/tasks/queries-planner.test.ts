@@ -36,6 +36,7 @@ const task = (
   title: `Task ${id.slice(-2)}`,
   due_at: dueAt,
   column: "to_do",
+  revision_note_at: null,
   sections: null,
   desks: { name: "Layout" },
   task_assignments: [{ member_id: ME, state: "on_it" }],
@@ -139,7 +140,7 @@ describe("getPlanner", () => {
       {
         method: "select",
         args: [
-          "id, title, due_at, column, sections(name), desks(name), task_assignments(member_id, state)",
+          "id, title, due_at, column, revision_note_at, sections(name), desks(name), task_assignments(member_id, state)",
         ],
       },
     ])
@@ -232,6 +233,7 @@ describe("getPlanner", () => {
           task(T1, "2026-10-01T00:00:00+00:00", {
             title: "Masthead brief",
             column: "doing",
+            revision_note_at: "2026-09-30T00:00:00+00:00",
             sections: { name: "News" },
             desks: null,
             task_assignments: [
@@ -255,6 +257,7 @@ describe("getPlanner", () => {
         dueAt: "2026-10-01T00:00:00+00:00",
         column: "doing",
         overdue: true,
+        sentBack: true,
         hasAwaitingResponse: true,
         hasNeedsReassignment: true,
         assignees: [

@@ -67,3 +67,11 @@ service_role public.begin_job_run(text)
 service_role public.end_job_run(bigint, job_status, jsonb)
 service_role public.record_error_event(text, text, text, uuid, text)
 service_role public.health_check()
+
+# tasks_approver_review: the review edges (called from task_capabilities,
+# which runs with the caller's rights) and the approver's three commands
+authenticated private.can_review_task(uuid)
+authenticated private.can_reopen_task(uuid)
+authenticated public.mark_done(uuid)
+authenticated public.send_back_task(uuid, text)
+authenticated public.reopen_task(uuid)

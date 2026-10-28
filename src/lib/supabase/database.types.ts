@@ -392,11 +392,15 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          done_at: string | null
           due_at: string
           id: string
           owning_desk_id: string | null
           owning_section_id: string | null
           reference_url: string | null
+          revision_note: string | null
+          revision_note_at: string | null
+          revision_note_by: string | null
           title: string
           updated_at: string
         }
@@ -405,11 +409,15 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          done_at?: string | null
           due_at: string
           id?: string
           owning_desk_id?: string | null
           owning_section_id?: string | null
           reference_url?: string | null
+          revision_note?: string | null
+          revision_note_at?: string | null
+          revision_note_by?: string | null
           title: string
           updated_at?: string
         }
@@ -418,11 +426,15 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          done_at?: string | null
           due_at?: string
           id?: string
           owning_desk_id?: string | null
           owning_section_id?: string | null
           reference_url?: string | null
+          revision_note?: string | null
+          revision_note_at?: string | null
+          revision_note_by?: string | null
           title?: string
           updated_at?: string
         }
@@ -453,6 +465,20 @@ export type Database = {
             columns: ["owning_section_id"]
             isOneToOne: false
             referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_revision_note_by_fkey"
+            columns: ["revision_note_by"]
+            isOneToOne: false
+            referencedRelation: "member_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_revision_note_by_fkey"
+            columns: ["revision_note_by"]
+            isOneToOne: false
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
@@ -505,6 +531,7 @@ export type Database = {
         Returns: undefined
       }
       health_check: { Args: never; Returns: boolean }
+      mark_done: { Args: { task_id: string }; Returns: undefined }
       move_task: {
         Args: {
           task_id: string
@@ -540,6 +567,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      reopen_task: { Args: { task_id: string }; Returns: undefined }
       respond_to_slot: {
         Args: {
           reason?: string
@@ -548,10 +576,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      send_back_task: {
+        Args: { note: string; task_id: string }
+        Returns: undefined
+      }
       task_capabilities: {
         Args: { ids: string[] }
         Returns: {
           allowed_moves: Database["public"]["Enums"]["task_column"][]
+          can_reopen: boolean
+          can_review: boolean
           hand_back_slot_ids: string[]
           respondable_slot_ids: string[]
           task_id: string

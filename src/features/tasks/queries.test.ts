@@ -174,6 +174,9 @@ const TASK_ROW = {
   due_at: "2026-10-31T15:30:00+00:00",
   reference_url: "https://example.com/brief",
   column: "to_do",
+  revision_note: null,
+  revision_note_by: null,
+  revision_note_at: null,
   sections: null,
   desks: { name: "Layout" },
 }
@@ -223,6 +226,8 @@ function mockDetail({
       allowed_moves: ["doing", "for_review"],
       respondable_slot_ids: [SLOT_C],
       hand_back_slot_ids: [SLOT_B],
+      can_review: false,
+      can_reopen: false,
     },
   ] as unknown,
   members = [
@@ -286,7 +291,7 @@ describe("getTaskDetail", () => {
     const tasks = calls.find((c) => c.table === "tasks")!
     expect(tasks.calls).toContainEqual([
       "select",
-      "id, title, description, due_at, reference_url, column, sections(name), desks(name)",
+      "id, title, description, due_at, reference_url, column, revision_note, revision_note_by, revision_note_at, sections(name), desks(name)",
     ])
     expect(tasks.calls).toContainEqual(["eq", "id", TASK_ID])
     const slots = calls.find((c) => c.table === "task_assignments")!
@@ -333,6 +338,7 @@ describe("getTaskDetail", () => {
       dueAt: "2026-10-31T15:30:00+00:00",
       referenceUrl: "https://example.com/brief",
       column: "to_do",
+      revisionNote: null,
       slots: [
         {
           id: SLOT_A,
@@ -362,9 +368,83 @@ describe("getTaskDetail", () => {
       allowedMoves: ["doing", "for_review"],
       respondableSlotIds: [SLOT_C],
       handBackSlotIds: [SLOT_B],
+      canReview: false,
+      canReopen: false,
       roleLabels: expect.objectContaining({ layout_artist: "Layout Artist" }),
     })
   })
+
+  it("returns the revision note with its author's name from member_directory, and reads that name with the slot members'", async () => {
+    const APPROVER = "00000000-0000-4000-8000-000000000008"
+    const { calls } = mockDetail({
+      task: {
+        ...TASK_ROW,
+        column: "doing",
+        revision_note: "Fix the captions.",
+        revision_note_by: APPROVER,
+        revision_note_at: "2026-10-30T02:00:00+00:00",
+      },
+      members: [
+        { id: HEAD_LAYOUT, name: "Head Layout Artist" },
+        { id: APPROVER, name: "Editor-in-Chief" },
+      ],
+    })
+
+    const detail = await getTaskDetail(TASK_ID)
+
+    expect(detail?.revisionNote).toEqual({
+      text: "Fix the captions.",
+      byName: "Editor-in-Chief",
+      at: "2026-10-30T02:00:00+00:00",
+    })
+    const directory = calls.find((c) => c.table === "member_directory")!
+    expect(directory.calls).toContainEqual([
+      "in",
+      "id",
+      [HEAD_LAYOUT, STAFF_WRITER, FORMER, APPROVER],
+    ])
+  })
+
+  it("names a revision note's author who left the directory \"Former member\"", async () => {
+    mockDetail({
+      task: {
+        ...TASK_ROW,
+        revision_note: "Fix the captions.",
+        revision_note_by: "00000000-0000-4000-8000-0000000000ee",
+        revision_note_at: "2026-10-30T02:00:00+00:00",
+      },
+    })
+
+    expect((await getTaskDetail(TASK_ID))?.revisionNote?.byName).toBe(
+      "Former member"
+    )
+  })
+
+  it.each([
+    [true, false],
+    [false, true],
+  ])(
+    "passes task_capabilities' can_review (%s) and can_reopen (%s) through",
+    async (canReview, canReopen) => {
+      mockDetail({
+        capabilities: [
+          {
+            task_id: TASK_ID,
+            allowed_moves: [],
+            respondable_slot_ids: [],
+            hand_back_slot_ids: [],
+            can_review: canReview,
+            can_reopen: canReopen,
+          },
+        ],
+      })
+
+      const detail = await getTaskDetail(TASK_ID)
+
+      expect(detail?.canReview).toBe(canReview)
+      expect(detail?.canReopen).toBe(canReopen)
+    }
+  )
 
   it("names a section-owned task's section", async () => {
     mockDetail({
@@ -382,6 +462,8 @@ describe("getTaskDetail", () => {
     expect(detail?.allowedMoves).toEqual([])
     expect(detail?.respondableSlotIds).toEqual([])
     expect(detail?.handBackSlotIds).toEqual([])
+    expect(detail?.canReview).toBe(false)
+    expect(detail?.canReopen).toBe(false)
   })
 
   it.each([
@@ -426,6 +508,7 @@ describe("getWhatsMine", () => {
       title: "Late task",
       due_at: "2026-12-01T00:00:00+00:00",
       column: "to_do",
+      revision_note_at: null,
       sections: null,
       desks: { name: "Layout" },
     },
@@ -434,6 +517,8 @@ describe("getWhatsMine", () => {
       title: "Early task",
       due_at: "2026-10-01T00:00:00+00:00",
       column: "doing",
+      // Sent back, and not moved since.
+      revision_note_at: "2026-09-30T00:00:00+00:00",
       sections: { name: "News" },
       desks: null,
     },
@@ -442,6 +527,7 @@ describe("getWhatsMine", () => {
       title: "Middle task",
       due_at: "2026-11-01T00:00:00+00:00",
       column: "for_review",
+      revision_note_at: null,
       sections: null,
       desks: { name: "Layout" },
     },
@@ -554,6 +640,10 @@ describe("getWhatsMine", () => {
     await getWhatsMine()
 
     const tasks = calls.find((c) => c.table === "tasks")!
+    expect(tasks.calls).toContainEqual([
+      "select",
+      "id, title, due_at, column, revision_note_at, sections(name), desks(name)",
+    ])
     expect(tasks.calls).toContainEqual(["in", "id", [T1, T2, T3]])
     const slots = calls.find((c) => c.table === "task_assignments")!
     expect(slots.calls).toContainEqual(["in", "task_id", [T1, T2, T3]])
@@ -671,6 +761,15 @@ describe("getWhatsMine", () => {
     expect(tasks[0].assignees).toEqual([
       { id: ME, name: "Former member", initials: "FM" },
     ])
+  })
+
+  it("marks a task sent back only while its revision note stands", async () => {
+    mockWhatsMine()
+
+    const { waiting, tasks } = await getWhatsMine()
+
+    expect(tasks.find((task) => task.id === T2)?.sentBack).toBe(true)
+    expect(waiting.every((item) => !item.task.sentBack)).toBe(true)
   })
 
   it("marks a task overdue only when its due date has passed and it isn't Done", async () => {

@@ -17,6 +17,8 @@ import {
   slotRespondSchema,
   taskCreateSchema,
   taskMoveSchema,
+  taskReviewSchema,
+  taskSendBackSchema,
 } from "./schemas"
 import type { SlotState, TaskColumn } from "./status"
 
@@ -37,6 +39,16 @@ export type MoveTaskState =
   | { ok: true; data: { column: TaskColumn } }
   | ActionError
 
+export type MarkDoneState = { ok: true; data: { column: "done" } } | ActionError
+
+export type SendBackTaskState =
+  | { ok: true; data: { column: "doing" } }
+  | ActionError
+
+export type ReopenTaskState =
+  | { ok: true; data: { column: "doing" } }
+  | ActionError
+
 // The codes each command raises as `raise exception ... message = '<code>'`
 // and the UI has copy for. Any other message — a code the UI never expects
 // (create_task's tasks.no_slots and tasks.invalid_slot_member backstops), a
@@ -51,6 +63,16 @@ const COMMAND_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
   "auth.not_active",
   "tasks.not_found",
   "tasks.not_allowed",
+])
+
+// The approver's commands. send_back_task's tasks.invalid_note backstop
+// (taskSendBackSchema already refuses a blank or long note) isn't here, so
+// it maps to tasks.save_failed and is recorded.
+const REVIEW_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
+  "auth.not_active",
+  "tasks.not_found",
+  "tasks.not_approver",
+  "tasks.stale",
 ])
 
 // task_assignments' own unique(task_id, member_id, role) constraint, not a
@@ -235,4 +257,101 @@ export async function moveTaskAction(input: unknown): Promise<MoveTaskState> {
 
   revalidatePath("/dashboard", "layout")
   return { ok: true, data: { column: toColumn } }
+}
+
+/**
+ * Marks a For Review task Done (AD-3, AD-4). mark_done decides whether the
+ * caller is the approver and the task is still For Review; this only
+ * parses, calls it, maps the error and revalidates.
+ */
+export async function markDoneAction(input: unknown): Promise<MarkDoneState> {
+  const parsed = taskReviewSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { taskId } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("mark_done", { task_id: taskId })
+
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
+        route: "action markDoneAction",
+        entityType: "task",
+        entityId: taskId,
+      }),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  return { ok: true, data: { column: "done" } }
+}
+
+/**
+ * Sends a For Review task back to Doing with the approver's note (AD-3,
+ * AD-4), trimmed by taskSendBackSchema. send_back_task decides whether the
+ * caller may; this only parses, calls it, maps the error and revalidates.
+ */
+export async function sendBackTaskAction(
+  input: unknown
+): Promise<SendBackTaskState> {
+  const parsed = taskSendBackSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { taskId, note } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("send_back_task", {
+    task_id: taskId,
+    note,
+  })
+
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
+        route: "action sendBackTaskAction",
+        entityType: "task",
+        entityId: taskId,
+      }),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  return { ok: true, data: { column: "doing" } }
+}
+
+/**
+ * Reopens a Done task into Doing (AD-3, AD-4). reopen_task decides whether
+ * the caller is the approver and the task is still Done; this only parses,
+ * calls it, maps the error and revalidates.
+ */
+export async function reopenTaskAction(
+  input: unknown
+): Promise<ReopenTaskState> {
+  const parsed = taskReviewSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { taskId } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("reopen_task", { task_id: taskId })
+
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
+        route: "action reopenTaskAction",
+        entityType: "task",
+        entityId: taskId,
+      }),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  return { ok: true, data: { column: "doing" } }
 }

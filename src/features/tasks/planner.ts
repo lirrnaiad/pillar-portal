@@ -4,7 +4,7 @@
 import { formatInPht, phtDayKey } from "@/lib/time"
 
 import type { OwnerFilter, TaskOwnerOption } from "./board"
-import { TASK_COLUMN_LABELS, type TaskColumn } from "./status"
+import { SENT_BACK_LABEL, TASK_COLUMN_LABELS, type TaskColumn } from "./status"
 
 /** A home scope the Planner's toggle can add: anything but All. */
 export type PlannerScope = Exclude<OwnerFilter, { kind: "all" }>
@@ -71,21 +71,28 @@ export function deadlineCount(count: number): string {
   return count === 1 ? "1 deadline" : `${count} deadlines`
 }
 
-export type PlannerChipStatusKind = TaskColumn | "overdue"
+export type PlannerChipStatusKind = TaskColumn | "overdue" | "sent_back"
 
 type ChipTask = {
   title: string
   dueAt: string
   column: TaskColumn
   overdue: boolean
+  sentBack: boolean
 }
 
-/** A chip's status: Overdue when the task is, otherwise its column. */
-export function plannerChipStatus(task: Pick<ChipTask, "column" | "overdue">): {
+/**
+ * A chip's status: Overdue when the task is, else Sent back while its
+ * revision note stands, otherwise its column.
+ */
+export function plannerChipStatus(
+  task: Pick<ChipTask, "column" | "overdue" | "sentBack">
+): {
   kind: PlannerChipStatusKind
   label: string
 } {
   if (task.overdue) return { kind: "overdue", label: "Overdue" }
+  if (task.sentBack) return { kind: "sent_back", label: SENT_BACK_LABEL }
   return { kind: task.column, label: TASK_COLUMN_LABELS[task.column] }
 }
 

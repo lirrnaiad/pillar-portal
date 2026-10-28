@@ -113,12 +113,39 @@ export const slotHandBackSchema = z.object({
   reason: slotRespondSchema.shape.reason,
 })
 
-/** A column move ("Move to…"). */
+/**
+ * A column move ("Move to…"). `done` stays a valid value: move_task refuses
+ * it, and task_capabilities never offers it.
+ */
 export const taskMoveSchema = z.object({
   taskId: z.uuid(),
   toColumn: z.enum(TASK_COLUMNS),
 })
 
+/** Mark done and Reopen: the approver's commands that take only the task. */
+export const taskReviewSchema = z.object({
+  taskId: z.uuid(),
+})
+
+// Mirrors tasks_revision_note_format (<ts>_tasks_approver_review.sql).
+export const REVISION_NOTE_MAX = 5000
+
+/**
+ * Send back with note: the note is trimmed and required, and capped like the
+ * database's own CHECK. The blank-note message is the dialog's inline error;
+ * the textarea's maxLength keeps the cap from being reached.
+ */
+export const taskSendBackSchema = z.object({
+  taskId: z.uuid(),
+  note: z
+    .string()
+    .trim()
+    .min(1, { message: "Add a note so they know what to fix." })
+    .max(REVISION_NOTE_MAX),
+})
+
 export type SlotRespondInput = z.input<typeof slotRespondSchema>
 export type SlotHandBackInput = z.input<typeof slotHandBackSchema>
 export type TaskMoveInput = z.input<typeof taskMoveSchema>
+export type TaskReviewInput = z.input<typeof taskReviewSchema>
+export type TaskSendBackInput = z.input<typeof taskSendBackSchema>

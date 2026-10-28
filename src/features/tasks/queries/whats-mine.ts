@@ -46,7 +46,9 @@ export async function getWhatsMine(): Promise<WhatsMine> {
   const [tasksResult, slotsResult, capabilitiesResult] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id, title, due_at, column, sections(name), desks(name)")
+      .select(
+        "id, title, due_at, column, revision_note_at, sections(name), desks(name)"
+      )
       .in("id", taskIds),
     supabase
       .from("task_assignments")

@@ -91,6 +91,8 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
               ...card,
               column: move.toColumn,
               overdue: move.toColumn === "done" ? false : card.overdue,
+              // Every move clears the revision note.
+              sentBack: false,
             }
           : card
       )

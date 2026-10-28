@@ -3,14 +3,20 @@
 export {
   createTaskAction,
   handBackSlotAction,
+  markDoneAction,
   moveTaskAction,
+  reopenTaskAction,
   respondToSlotAction,
+  sendBackTaskAction,
 } from "./actions"
 export type {
   CreateTaskState,
   HandBackSlotState,
+  MarkDoneState,
   MoveTaskState,
+  ReopenTaskState,
   RespondToSlotState,
+  SendBackTaskState,
 } from "./actions"
 export {
   BOARD_ROW_HEIGHT,
@@ -63,7 +69,11 @@ export { getTaskForCalendar } from "./queries/calendar"
 export { getPlanner } from "./queries/planner"
 export type { TaskCardAssignee, TaskCardData } from "./queries/shared"
 export { getTaskDetail } from "./queries/task-detail"
-export type { TaskDetail, TaskDetailSlot } from "./queries/task-detail"
+export type {
+  TaskDetail,
+  TaskDetailSlot,
+  TaskRevisionNote,
+} from "./queries/task-detail"
 export { getTaskFormOptions } from "./queries/task-form"
 export type {
   SlotMemberOption,
@@ -74,24 +84,31 @@ export { getWhatsMine } from "./queries/whats-mine"
 export type { WaitingSlot, WhatsMine } from "./queries/whats-mine"
 export {
   PRODUCTION_ROLES,
+  REVISION_NOTE_MAX,
   slotHandBackSchema,
   slotRespondSchema,
   taskCreateSchema,
   taskMoveSchema,
+  taskReviewSchema,
+  taskSendBackSchema,
 } from "./schemas"
 export type {
   SlotHandBackInput,
   SlotRespondInput,
   TaskCreateInput,
   TaskMoveInput,
+  TaskReviewInput,
+  TaskSendBackInput,
   TaskSlotInput,
 } from "./schemas"
 export {
   isTaskOverdue,
+  SENT_BACK_LABEL,
   SLOT_STATE_FAMILIES,
   SLOT_STATE_LABELS,
   TASK_COLUMN_FAMILIES,
   TASK_COLUMN_LABELS,
   TASK_COLUMNS,
+  taskStatus,
 } from "./status"
 export type { SlotState, TaskColumn } from "./status"

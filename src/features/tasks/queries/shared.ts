@@ -52,6 +52,11 @@ export type TaskCardData = {
   dueAt: string
   column: TaskColumn
   overdue: boolean
+  /**
+   * The task's revision note stands (it was sent back and hasn't moved
+   * since), so its status reads "Sent back".
+   */
+  sentBack: boolean
   /** Any slot on the task, anyone's, is in that state. */
   hasAwaitingResponse: boolean
   hasNeedsReassignment: boolean
@@ -73,6 +78,7 @@ type CardTask = {
   title: string
   due_at: string
   column: TaskColumn
+  revision_note_at: string | null
   sections: { name: string } | null
   desks: { name: string } | null
 }
@@ -99,6 +105,7 @@ export function toTaskCard(
     dueAt: task.due_at,
     column: task.column,
     overdue: isTaskOverdue(task.due_at, task.column, now),
+    sentBack: task.revision_note_at !== null,
     hasAwaitingResponse: slots.some(
       (slot) => slot.state === "awaiting_response"
     ),
@@ -130,7 +137,7 @@ export function taskCardsQuery(supabase: ServerClient) {
   return supabase
     .from("tasks")
     .select(
-      "id, title, due_at, column, sections(name), desks(name), task_assignments(member_id, state)"
+      "id, title, due_at, column, revision_note_at, sections(name), desks(name), task_assignments(member_id, state)"
     )
     .order("due_at")
     .order("id")

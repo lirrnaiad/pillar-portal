@@ -25,6 +25,25 @@ export const TASK_COLUMN_FAMILIES: Record<TaskColumn, StatusFamily> = {
   done: "positive",
 }
 
+/** The status a sent-back task shows in place of its column's. */
+export const SENT_BACK_LABEL = "Sent back"
+
+/**
+ * A task's status wherever it shows: "Sent back" in the attention family
+ * while its revision note stands (`sentBack`), otherwise its column's label
+ * and family. Display only; it decides no action.
+ */
+export function taskStatus(
+  column: TaskColumn,
+  sentBack: boolean
+): { family: StatusFamily; label: string } {
+  if (sentBack) return { family: "attention", label: SENT_BACK_LABEL }
+  return {
+    family: TASK_COLUMN_FAMILIES[column],
+    label: TASK_COLUMN_LABELS[column],
+  }
+}
+
 export const SLOT_STATE_LABELS: Record<SlotState, string> = {
   awaiting_response: "Awaiting response",
   on_it: "On it",
