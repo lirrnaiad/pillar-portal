@@ -46,6 +46,7 @@ const card = (n: number, title: string): TaskCardData => ({
   dueAt: "2026-10-31T15:30:00+00:00",
   column: "to_do",
   overdue: false,
+  sentBack: false,
   hasAwaitingResponse: false,
   hasNeedsReassignment: false,
   assignees: [],

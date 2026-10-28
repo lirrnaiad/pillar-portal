@@ -32,6 +32,8 @@ const TASKS = [
     title: "First",
     due_at: "2026-01-01T00:00:00+00:00",
     column: "doing",
+    // Sent back, and not moved since.
+    revision_note_at: "2025-12-30T00:00:00+00:00",
     sections: { name: "News" },
     desks: null,
     task_assignments: [
@@ -45,6 +47,7 @@ const TASKS = [
     title: "Second",
     due_at: "2099-01-01T00:00:00+00:00",
     column: "to_do",
+    revision_note_at: null,
     sections: null,
     desks: { name: "Layout" },
     task_assignments: [{ member_id: "gone", state: "on_it" }],
@@ -186,6 +189,7 @@ describe("getBoard", () => {
         dueAt: "2026-01-01T00:00:00+00:00",
         column: "doing",
         overdue: true,
+        sentBack: true,
         hasAwaitingResponse: true,
         hasNeedsReassignment: true,
         assignees: [
@@ -201,6 +205,7 @@ describe("getBoard", () => {
         dueAt: "2099-01-01T00:00:00+00:00",
         column: "to_do",
         overdue: false,
+        sentBack: false,
         hasAwaitingResponse: false,
         hasNeedsReassignment: false,
         assignees: [{ id: "gone", name: "Former member", initials: "FM" }],

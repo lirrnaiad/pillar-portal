@@ -29,6 +29,7 @@ function task(title: string, dueAt: string): TaskCardData {
     dueAt,
     column: "doing",
     overdue: false,
+    sentBack: false,
     hasAwaitingResponse: false,
     hasNeedsReassignment: false,
     assignees: [],

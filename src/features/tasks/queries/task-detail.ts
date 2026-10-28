@@ -20,6 +20,15 @@ export type TaskDetailSlot = {
   reason: string | null
 }
 
+/** The approver's note on a sent-back task, until its next column move. */
+export type TaskRevisionNote = {
+  text: string
+  /** From member_directory; "Former member" when they're no longer listed. */
+  byName: string
+  /** UTC ISO timestamp; shown in PHT. */
+  at: string
+}
+
 export type TaskDetail = {
   id: string
   title: string
@@ -30,6 +39,8 @@ export type TaskDetail = {
   dueAt: string
   referenceUrl: string | null
   column: TaskColumn
+  /** Present while the task stands sent back; its status reads "Sent back". */
+  revisionNote: TaskRevisionNote | null
   /** Slots in the order they were created. */
   slots: TaskDetailSlot[]
   /**
@@ -41,6 +52,13 @@ export type TaskDetail = {
   respondableSlotIds: string[]
   /** The slots it may hand back (On it, its own), from task_capabilities. */
   handBackSlotIds: string[]
+  /**
+   * Whether it may Mark done or Send back (For Review, and it is the
+   * approver) and Reopen (Done, and it is the approver), from
+   * task_capabilities.
+   */
+  canReview: boolean
+  canReopen: boolean
   /** Resolved here for the same client-bundle reason as TaskFormOptions's (./task-form.ts). */
   roleLabels: Record<ProductionRole, string>
 }
@@ -50,10 +68,10 @@ export type TaskDetail = {
  * is), or null when the id is malformed or names no task the caller can
  * read. Throws on any query error.
  *
- * The task (with its owner's name), its slots and task_capabilities are read
- * together; the slot members' names (from member_directory, never
- * `members`) and the readable reasons then follow, since they need the slot
- * rows.
+ * The task (with its owner's name and any revision note), its slots and
+ * task_capabilities are read together; the names of the slot members and the
+ * note's author (from member_directory, never `members`) and the readable
+ * reasons then follow, since they need those rows.
  */
 export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
   if (!taskIdSchema.safeParse(id).success) return null
@@ -64,7 +82,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     supabase
       .from("tasks")
       .select(
-        "id, title, description, due_at, reference_url, column, sections(name), desks(name)"
+        "id, title, description, due_at, reference_url, column, revision_note, revision_note_by, revision_note_at, sections(name), desks(name)"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -101,7 +119,12 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     (row) => row.task_id === task.id
   )
 
-  const memberIds = [...new Set(slots.map((slot) => slot.member_id))]
+  const memberIds = [
+    ...new Set([
+      ...slots.map((slot) => slot.member_id),
+      ...(task.revision_note_by !== null ? [task.revision_note_by] : []),
+    ]),
+  ]
   const slotIds = slots.map((slot) => slot.id)
 
   const [membersResult, reasonsResult] = await Promise.all([
@@ -140,6 +163,17 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     dueAt: task.due_at,
     referenceUrl: task.reference_url,
     column: task.column,
+    revisionNote:
+      task.revision_note !== null && task.revision_note_at !== null
+        ? {
+            text: task.revision_note,
+            byName:
+              (task.revision_note_by !== null
+                ? nameById.get(task.revision_note_by)
+                : undefined) ?? FORMER_MEMBER,
+            at: task.revision_note_at,
+          }
+        : null,
     slots: slots.map((slot) => ({
       id: slot.id,
       role: slot.role,
@@ -151,6 +185,8 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     allowedMoves: capabilities?.allowed_moves ?? [],
     respondableSlotIds: capabilities?.respondable_slot_ids ?? [],
     handBackSlotIds: capabilities?.hand_back_slot_ids ?? [],
+    canReview: capabilities?.can_review ?? false,
+    canReopen: capabilities?.can_reopen ?? false,
     roleLabels: PRODUCTION_ROLE_LABELS,
   }
 }

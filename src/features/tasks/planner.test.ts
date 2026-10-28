@@ -106,14 +106,27 @@ describe("plannerChipStatus", () => {
     ["for_review", { kind: "for_review", label: "For Review" }],
     ["done", { kind: "done", label: "Done" }],
   ] as const)("is the column label for %s", (column, expected) => {
-    expect(plannerChipStatus({ column, overdue: false })).toEqual(expected)
+    expect(
+      plannerChipStatus({ column, overdue: false, sentBack: false })
+    ).toEqual(expected)
   })
 
   it("is Overdue when the task is", () => {
-    expect(plannerChipStatus({ column: "doing", overdue: true })).toEqual({
-      kind: "overdue",
-      label: "Overdue",
-    })
+    expect(
+      plannerChipStatus({ column: "doing", overdue: true, sentBack: false })
+    ).toEqual({ kind: "overdue", label: "Overdue" })
+  })
+
+  it("is Sent back when the task was sent back and isn't overdue", () => {
+    expect(
+      plannerChipStatus({ column: "doing", overdue: false, sentBack: true })
+    ).toEqual({ kind: "sent_back", label: "Sent back" })
+  })
+
+  it("is Overdue, not Sent back, when the task is both", () => {
+    expect(
+      plannerChipStatus({ column: "doing", overdue: true, sentBack: true })
+    ).toEqual({ kind: "overdue", label: "Overdue" })
   })
 })
 
@@ -124,6 +137,7 @@ describe("plannerChipLabel", () => {
     dueAt: "2026-10-10T09:00:00Z",
     column: "to_do",
     overdue: false,
+    sentBack: false,
   } as const
 
   it("names the title, the status and the PHT due time", () => {
@@ -135,6 +149,12 @@ describe("plannerChipLabel", () => {
   it("says Overdue for an overdue task", () => {
     expect(plannerChipLabel({ ...TASK, overdue: true })).toBe(
       "Masthead brief, Overdue, due Sat, Oct 10 at 5:00 PM"
+    )
+  })
+
+  it("says Sent back for a sent-back task", () => {
+    expect(plannerChipLabel({ ...TASK, column: "doing", sentBack: true })).toBe(
+      "Masthead brief, Sent back, due Sat, Oct 10 at 5:00 PM"
     )
   })
 })

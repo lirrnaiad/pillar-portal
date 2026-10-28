@@ -14,8 +14,11 @@ const { handBackSlotAction } = vi.hoisted(() => ({
 }))
 vi.mock("../actions", () => ({
   handBackSlotAction,
+  markDoneAction: vi.fn(),
   moveTaskAction: vi.fn(),
+  reopenTaskAction: vi.fn(),
   respondToSlotAction: vi.fn(),
+  sendBackTaskAction: vi.fn(),
 }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock("@/lib/env.client", () => ({
@@ -58,6 +61,7 @@ const TASK: TaskDetail = {
   dueAt: "2026-10-31T15:30:00+00:00",
   referenceUrl: "https://example.com/brief",
   column: "doing",
+  revisionNote: null,
   slots: [
     {
       id: LAYOUT_SLOT,
@@ -87,6 +91,8 @@ const TASK: TaskDetail = {
   allowedMoves: ["to_do", "for_review"],
   respondableSlotIds: [CARTOON_SLOT],
   handBackSlotIds: [],
+  canReview: false,
+  canReopen: false,
   roleLabels: {
     writer: "Writer",
     layout_artist: "Layout Artist",
@@ -320,6 +326,93 @@ describe("TaskDetailView", () => {
     ])
   })
 
+  it("shows a sent-back task's revision note under the status, with the approver's name and the PHT date, and the status reads \"Sent back\"", () => {
+    render(
+      <TaskDetailView
+        task={{
+          ...TASK,
+          revisionNote: {
+            text: "Fix the captions.\nAnd the byline.",
+            byName: "Head Layout Artist",
+            // 00:30 PHT on Sunday, November 1, 2026.
+            at: "2026-10-31T16:30:00+00:00",
+          },
+          // Not a state the database produces together (a sent-back task is
+          // in Doing, with nothing to review): here only to pin the order.
+          canReview: true,
+          respondableSlotIds: [],
+          handBackSlotIds: [LAYOUT_SLOT],
+        }}
+      />
+    )
+
+    const status = document.getElementById("task-status")
+    expect(status).toHaveTextContent("Status: Sent back")
+    const note = screen.getByText(/Fix the captions\./)
+    expect(note).toHaveClass("whitespace-pre-line")
+    const block = note.parentElement!
+    expect(block).toHaveClass(
+      "bg-status-attention-tint",
+      "border-l-[3px]",
+      "border-status-attention",
+      "rounded-r-lg"
+    )
+    const byline = within(block).getByText(/Head Layout Artist/)
+    expect(byline).toHaveClass("text-muted-foreground")
+    expect(byline).toHaveTextContent(
+      "Sent back by Head Layout Artist · Sun, Nov 1, 2026"
+    )
+    expect(within(byline).getByText("Sent back by")).toHaveClass("sr-only")
+    // Under the status, before the actions: the review buttons, then Hand
+    // back.
+    const follows = (a: Node, b: Node) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+    const markDone = screen.getByRole("button", { name: "Mark done" })
+    const handBack = screen.getByRole("button", { name: /^Hand back/ })
+    expect(follows(status!, block)).toBe(true)
+    expect(follows(block, markDone)).toBe(true)
+    expect(follows(block, handBack)).toBe(true)
+  })
+
+  it("shows no revision note, and the column as the status, when the task isn't sent back", () => {
+    render(<TaskDetailView task={TASK} />)
+
+    expect(document.getElementById("task-status")).toHaveTextContent(
+      "Status: Doing"
+    )
+    expect(screen.queryByText(/Sent back by/)).toBeNull()
+  })
+
+  it("offers Mark done and Send back with note only when canReview, and Reopen only when canReopen", () => {
+    const { rerender } = render(<TaskDetailView task={TASK} />)
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull()
+    expect(
+      screen.queryByRole("button", { name: "Send back with note" })
+    ).toBeNull()
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull()
+
+    rerender(
+      <TaskDetailView
+        task={{ ...TASK, column: "for_review", canReview: true }}
+      />
+    )
+    expect(
+      screen.getByRole("button", { name: "Mark done" })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "Send back with note" })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull()
+
+    rerender(
+      <TaskDetailView
+        task={{ ...TASK, column: "done", allowedMoves: [], canReopen: true }}
+      />
+    )
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Reopen" })).toBeInTheDocument()
+  })
+
   it("omits the reference link row and the description when they're empty", () => {
     render(
       <TaskDetailView
@@ -342,6 +435,24 @@ describe("TaskDetailView", () => {
 
   it("has no axe violations", async () => {
     const { container } = render(<TaskDetailView task={TASK} />)
+    expect(await axeViolations(container)).toEqual([])
+  })
+
+  it("has no axe violations with a revision note and the review buttons", async () => {
+    const { container } = render(
+      <TaskDetailView
+        task={{
+          ...TASK,
+          column: "for_review",
+          canReview: true,
+          revisionNote: {
+            text: "Fix the captions.",
+            byName: "Head Layout Artist",
+            at: "2026-10-31T16:30:00+00:00",
+          },
+        }}
+      />
+    )
     expect(await axeViolations(container)).toEqual([])
   })
 })

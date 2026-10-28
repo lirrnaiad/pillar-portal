@@ -6,12 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { formatInPht } from "@/lib/time"
 
 import type { TaskCardData } from "../queries/shared"
-import {
-  SLOT_STATE_FAMILIES,
-  SLOT_STATE_LABELS,
-  TASK_COLUMN_FAMILIES,
-  TASK_COLUMN_LABELS,
-} from "../status"
+import { SLOT_STATE_FAMILIES, SLOT_STATE_LABELS, taskStatus } from "../status"
 import { TaskCardMenu } from "./calendar-menu"
 
 const DUE_FORMAT = "EEE, MMM d, h:mm a"
@@ -55,6 +50,7 @@ export function TaskCard({
   headingLevel?: 3 | 4
 }) {
   const Heading = headingLevel === 4 ? "h4" : "h3"
+  const status = taskStatus(task.column, task.sentBack)
   const shown = task.assignees.slice(0, MAX_AVATARS)
   const extra = task.assignees.length - shown.length
 
@@ -101,8 +97,8 @@ export function TaskCard({
 
         <div className="flex items-center justify-between gap-3">
           <StatusDot
-            family={TASK_COLUMN_FAMILIES[task.column]}
-            label={TASK_COLUMN_LABELS[task.column]}
+            family={status.family}
+            label={status.label}
             className="text-sm"
           />
           {task.assignees.length > 0 && (

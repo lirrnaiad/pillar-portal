@@ -73,6 +73,7 @@ function card(
     dueAt: "2099-01-01T00:00:00+00:00",
     column: "to_do",
     overdue: false,
+    sentBack: false,
     hasAwaitingResponse: false,
     hasNeedsReassignment: false,
     assignees: [],

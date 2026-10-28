@@ -32,6 +32,7 @@ const TASK: TaskCardData = {
   dueAt: "2026-10-31T15:30:00+00:00",
   column: "doing",
   overdue: false,
+  sentBack: false,
   hasAwaitingResponse: false,
   hasNeedsReassignment: false,
   assignees: [assignee(1, "Sam Layout", "SL")],
@@ -87,6 +88,19 @@ describe("TaskCard", () => {
       "Sat, Oct 31, 11:30 PM"
     )
     expect(screen.getByText("Doing")).toBeInTheDocument()
+  })
+
+  it('shows a sent-back task\'s status as "Sent back" beside an attention dot, in place of its column', () => {
+    const { container } = render(
+      <TaskCard task={{ ...TASK, sentBack: true }} />
+    )
+
+    expect(screen.getByText("Sent back")).toBeInTheDocument()
+    expect(screen.queryByText("Doing")).toBeNull()
+    expect(container.querySelector("[data-family]")).toHaveAttribute(
+      "data-family",
+      "attention"
+    )
   })
 
   it("shows no badge when nothing calls for one", () => {

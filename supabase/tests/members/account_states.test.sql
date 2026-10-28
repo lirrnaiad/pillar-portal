@@ -1,7 +1,8 @@
 -- Account states (Story 2.1): declined and deactivated members are not
--- active, so they read nothing but their own `members` row and every command
--- raises `auth.not_active` for them. Also the new-user trigger (insert only),
--- the declined CHECK, and the before_user_created Auth hook.
+-- active. They read nothing but their own `members` row, and every command
+-- raises `auth.not_active` for them, the approver's three included (Story
+-- 3.1). This file also covers the new-user trigger (insert only), the
+-- declined CHECK and the before_user_created Auth hook.
 --
 -- The caller matrix is table-driven, as in members.test.sql: each row of
 -- `callers` is a caller, a DO block records what each one reads and what each
@@ -82,6 +83,17 @@ select pg_temp.new_slot('00000000-0000-4000-e200-000000000006', '00000000-0000-4
 insert into public.assignment_reasons (assignment_id, reason)
 values ('00000000-0000-4000-e200-000000000006', 'Graduated');
 
+-- Two more Layout tasks for the approver's commands: one in For Review (Mark
+-- done, Send back, and a move to Done), one Done (Reopen).
+insert into public.tasks (id, title, owning_desk_id, due_at, created_by, "column", done_at)
+values
+  ('00000000-0000-4000-e100-000000000002', 'Account states review fixture',
+   'layout', '2026-11-01T00:00:00+08', '00000000-0000-4000-e000-000000000005',
+   'for_review', null),
+  ('00000000-0000-4000-e100-000000000003', 'Account states reopen fixture',
+   'layout', '2026-11-01T00:00:00+08', '00000000-0000-4000-e000-000000000005',
+   'done', now());
+
 insert into public.activity (op_id, entity_type, entity_id, actor_id, action)
 values (gen_random_uuid(), 'task', '00000000-0000-4000-e100-000000000001',
         '00000000-0000-4000-e000-000000000005', 'created');
@@ -118,6 +130,8 @@ insert into callers values
 -- totals are read here as `postgres`; the directory total restates the
 -- active predicate rather than calling the helper under test. Command
 -- results are `ok` (accepted, then rolled back) or `<sqlstate> <message>`.
+-- The approver's commands are accepted only from the active Head Layout
+-- Artist; a move to Done is refused for everyone.
 create temp table expected as
 with t as (
   select
@@ -142,39 +156,51 @@ cross join lateral (values
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
    'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active'),
   ('declined',
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active'),
   ('deactivated former Head Layout Artist',
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
    'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active'),
   ('active staff',
    1, 1, t.org, t.tasks, t.slots, t.activity, 0, t.directory, 2, 1, 2,
    true, false, false, true,
-   'P0001 tasks.not_admin', 'ok', 'ok', 'ok'),
+   'P0001 tasks.not_admin', 'ok', 'ok', 'ok',
+   'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
+   'P0001 tasks.not_approver', 'P0001 tasks.not_allowed'),
   ('active admin (Sports Editor)',
    t.members, t.positions_held, t.org, t.tasks, t.slots, t.activity, 0,
    t.directory, 0, 1, 0,
    true, true, false, true,
    'ok', 'P0001 tasks.not_allowed', 'P0001 tasks.not_allowed',
-   'P0001 tasks.not_allowed'),
+   'P0001 tasks.not_allowed',
+   'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
+   'P0001 tasks.not_approver', 'P0001 tasks.not_allowed'),
   ('active Head Layout Artist',
    t.members, t.positions_held, t.org, t.tasks, t.slots, t.activity, 1,
    t.directory, 0, 1, 0,
    true, true, true, true,
    'ok', 'P0001 tasks.not_allowed', 'P0001 tasks.not_allowed',
-   'P0001 tasks.not_allowed')
+   'P0001 tasks.not_allowed',
+   'ok', 'ok', 'ok', 'P0001 tasks.not_allowed')
 ) as e(
   label,
   members, member_positions, org, tasks, task_assignments, activity, reasons,
   directory, my_open_slots, capabilities, open_slots,
   is_active, is_admin, is_approver, can_join,
-  create_task, respond_to_slot, move_task, hand_back_slot
+  create_task, respond_to_slot, move_task, hand_back_slot,
+  mark_done, send_back_task, reopen_task, move_task_done
 );
 
 create temp table observed (like expected);
@@ -185,6 +211,8 @@ declare
   c callers;
   o observed;
   v_task constant uuid := '00000000-0000-4000-e100-000000000001';
+  v_review_task constant uuid := '00000000-0000-4000-e100-000000000002';
+  v_done_task constant uuid := '00000000-0000-4000-e100-000000000003';
   v_staff constant uuid := '00000000-0000-4000-e000-000000000004';
 begin
   -- Read the fixtures while still `postgres`: `authenticated` can't read
@@ -263,6 +291,38 @@ begin
       raise exception using errcode = 'P0001', message = 'probe.accepted';
     exception when others then
       o.hand_back_slot := case when sqlerrm = 'probe.accepted' then 'ok'
+                               else sqlstate || ' ' || sqlerrm end;
+    end;
+
+    begin
+      perform public.mark_done(v_review_task);
+      raise exception using errcode = 'P0001', message = 'probe.accepted';
+    exception when others then
+      o.mark_done := case when sqlerrm = 'probe.accepted' then 'ok'
+                          else sqlstate || ' ' || sqlerrm end;
+    end;
+
+    begin
+      perform public.send_back_task(v_review_task, 'Fix the captions');
+      raise exception using errcode = 'P0001', message = 'probe.accepted';
+    exception when others then
+      o.send_back_task := case when sqlerrm = 'probe.accepted' then 'ok'
+                               else sqlstate || ' ' || sqlerrm end;
+    end;
+
+    begin
+      perform public.reopen_task(v_done_task);
+      raise exception using errcode = 'P0001', message = 'probe.accepted';
+    exception when others then
+      o.reopen_task := case when sqlerrm = 'probe.accepted' then 'ok'
+                            else sqlstate || ' ' || sqlerrm end;
+    end;
+
+    begin
+      perform public.move_task(v_review_task, 'done');
+      raise exception using errcode = 'P0001', message = 'probe.accepted';
+    exception when others then
+      o.move_task_done := case when sqlerrm = 'probe.accepted' then 'ok'
                                else sqlstate || ' ' || sqlerrm end;
     end;
 

@@ -82,7 +82,12 @@ describe("TaskColumnControl", () => {
     ["done", "Done", "positive"],
   ] as const)("shows %s as %j beside a %s dot", (column, label, family) => {
     const { container } = render(
-      <TaskColumnControl taskId={TASK_ID} column={column} allowedMoves={[]} />
+      <TaskColumnControl
+        taskId={TASK_ID}
+        column={column}
+        sentBack={false}
+        allowedMoves={[]}
+      />
     )
 
     expect(status(container)).toHaveTextContent(`Status: ${label}`)
@@ -92,20 +97,72 @@ describe("TaskColumnControl", () => {
     expect(dots[0]).toHaveClass(`bg-status-${family}`)
   })
 
+  it('shows a sent-back task as "Sent back" beside an attention dot', () => {
+    const { container } = render(
+      <TaskColumnControl
+        taskId={TASK_ID}
+        column="doing"
+        sentBack
+        allowedMoves={["to_do", "for_review"]}
+      />
+    )
+
+    expect(status(container)).toHaveTextContent("Status: Sent back")
+    const dot = status(container).querySelector("[data-family]")
+    expect(dot).toHaveAttribute("data-family", "attention")
+    expect(dot).toHaveClass("bg-status-attention")
+  })
+
+  it('shows the moved-to column, not "Sent back", while a move saves, and "Sent back" again if it is refused', async () => {
+    const user = userEvent.setup()
+    const settle = pendingCall()
+    const { container } = render(
+      <TaskColumnControl
+        taskId={TASK_ID}
+        column="doing"
+        sentBack
+        allowedMoves={["to_do", "for_review"]}
+      />
+    )
+
+    await chooseMove(user, "For Review")
+
+    await waitFor(() =>
+      expect(status(container)).toHaveTextContent("Status: For Review")
+    )
+
+    settle({ ok: false, code: "tasks.not_allowed" })
+    await waitFor(() =>
+      expect(status(container)).toHaveTextContent("Status: Sent back")
+    )
+  })
+
   it("puts the status in a polite, atomic live region the page can focus", () => {
     const { container } = render(
-      <TaskColumnControl taskId={TASK_ID} column="to_do" allowedMoves={[]} />
+      <TaskColumnControl
+        taskId={TASK_ID}
+        column="to_do"
+        sentBack={false}
+        allowedMoves={[]}
+      />
     )
 
     const region = status(container)
     expect(region).toHaveAttribute("aria-atomic", "true")
     expect(region).toHaveAttribute("tabindex", "-1")
+    // Where the review controls put focus once their command is saved.
+    expect(region).toHaveAttribute("id", "task-status")
     expect(within(region).getByText("Status:")).toHaveClass("sr-only")
   })
 
   it("shows no move control when no move is allowed", () => {
     render(
-      <TaskColumnControl taskId={TASK_ID} column="done" allowedMoves={[]} />
+      <TaskColumnControl
+        taskId={TASK_ID}
+        column="done"
+        sentBack={false}
+        allowedMoves={[]}
+      />
     )
 
     expect(screen.queryByRole("combobox")).toBeNull()
@@ -117,6 +174,7 @@ describe("TaskColumnControl", () => {
       <TaskColumnControl
         taskId={TASK_ID}
         column="doing"
+        sentBack={false}
         allowedMoves={["to_do", "for_review"]}
       />
     )
@@ -139,6 +197,7 @@ describe("TaskColumnControl", () => {
       <TaskColumnControl
         taskId={TASK_ID}
         column="to_do"
+        sentBack={false}
         allowedMoves={["doing", "for_review"]}
       />
     )
@@ -175,6 +234,7 @@ describe("TaskColumnControl", () => {
       <TaskColumnControl
         taskId={TASK_ID}
         column="to_do"
+        sentBack={false}
         allowedMoves={["doing"]}
       />
     )
@@ -186,6 +246,7 @@ describe("TaskColumnControl", () => {
       <TaskColumnControl
         taskId={TASK_ID}
         column="doing"
+        sentBack={false}
         allowedMoves={["to_do", "for_review"]}
       />
     )
@@ -195,24 +256,31 @@ describe("TaskColumnControl", () => {
 
   it("moves focus to the status when a move leaves no further moves", async () => {
     const user = userEvent.setup()
-    moveTaskAction.mockResolvedValue({ ok: true, data: { column: "done" } })
+    moveTaskAction.mockResolvedValue({ ok: true, data: { column: "doing" } })
     const { container, rerender } = render(
       <TaskColumnControl
         taskId={TASK_ID}
-        column="for_review"
-        allowedMoves={["done"]}
+        column="to_do"
+        sentBack={false}
+        allowedMoves={["doing"]}
       />
     )
 
-    await chooseMove(user, "Done")
+    await chooseMove(user, "Doing")
     await waitFor(() => expect(trigger()).not.toHaveAttribute("aria-disabled"))
+    // The slot was handed back meanwhile, so the viewer has no moves left.
     rerender(
-      <TaskColumnControl taskId={TASK_ID} column="done" allowedMoves={[]} />
+      <TaskColumnControl
+        taskId={TASK_ID}
+        column="doing"
+        sentBack={false}
+        allowedMoves={[]}
+      />
     )
 
     expect(screen.queryByRole("combobox")).toBeNull()
     await waitFor(() => expect(status(container)).toHaveFocus())
-    expect(status(container)).toHaveTextContent("Status: Done")
+    expect(status(container)).toHaveTextContent("Status: Doing")
   })
 
   it("leaves focus alone when the moves go away while focus is elsewhere", () => {
@@ -222,6 +290,7 @@ describe("TaskColumnControl", () => {
         <TaskColumnControl
           taskId={TASK_ID}
           column="to_do"
+          sentBack={false}
           allowedMoves={["doing"]}
         />
       </>
@@ -232,7 +301,12 @@ describe("TaskColumnControl", () => {
     rerender(
       <>
         <button type="button">Elsewhere</button>
-        <TaskColumnControl taskId={TASK_ID} column="doing" allowedMoves={[]} />
+        <TaskColumnControl
+          taskId={TASK_ID}
+          column="doing"
+          sentBack={false}
+          allowedMoves={[]}
+        />
       </>
     )
 
@@ -246,6 +320,7 @@ describe("TaskColumnControl", () => {
       <TaskColumnControl
         taskId={TASK_ID}
         column="to_do"
+        sentBack={false}
         allowedMoves={["doing"]}
       />
     )
@@ -271,6 +346,7 @@ describe("TaskColumnControl", () => {
       <TaskColumnControl
         taskId={TASK_ID}
         column="to_do"
+        sentBack={false}
         allowedMoves={["doing"]}
       />
     )
@@ -294,13 +370,19 @@ describe("TaskColumnControl", () => {
       <TaskColumnControl
         taskId={TASK_ID}
         column="to_do"
+        sentBack={false}
         allowedMoves={["doing"]}
       />
     )
     expect(await axeViolations(container)).toEqual([])
 
     rerender(
-      <TaskColumnControl taskId={TASK_ID} column="done" allowedMoves={[]} />
+      <TaskColumnControl
+        taskId={TASK_ID}
+        column="done"
+        sentBack={false}
+        allowedMoves={[]}
+      />
     )
     expect(await axeViolations(container)).toEqual([])
   })

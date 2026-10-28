@@ -26,6 +26,7 @@ const TASK: TaskCardData = {
   dueAt: "2026-10-10T09:00:00+00:00",
   column: "to_do",
   overdue: false,
+  sentBack: false,
   hasAwaitingResponse: false,
   hasNeedsReassignment: false,
   assignees: [],
@@ -61,21 +62,59 @@ describe("PlannerChip", () => {
   })
 
   it.each([
-    ["to_do", false, "lucide-circle", "text-muted-foreground", "To Do"],
-    ["doing", false, "lucide-circle-dot", "text-status-progress", "Doing"],
+    ["to_do", false, false, "lucide-circle", "text-muted-foreground", "To Do"],
+    [
+      "doing",
+      false,
+      false,
+      "lucide-circle-dot",
+      "text-status-progress",
+      "Doing",
+    ],
     [
       "for_review",
+      false,
       false,
       "lucide-circle-dot",
       "text-status-progress",
       "For Review",
     ],
-    ["done", false, "lucide-circle-check", "text-status-positive", "Done"],
-    ["doing", true, "lucide-circle-alert", "text-status-attention", "Overdue"],
+    [
+      "done",
+      false,
+      false,
+      "lucide-circle-check",
+      "text-status-positive",
+      "Done",
+    ],
+    [
+      "doing",
+      true,
+      false,
+      "lucide-circle-alert",
+      "text-status-attention",
+      "Overdue",
+    ],
+    [
+      "doing",
+      false,
+      true,
+      "lucide-circle-arrow-left",
+      "text-status-attention",
+      "Sent back",
+    ],
+    [
+      "doing",
+      true,
+      true,
+      "lucide-circle-alert",
+      "text-status-attention",
+      "Overdue",
+    ],
   ] as const)(
-    "shows %s (overdue: %s) as a 12px hidden %s glyph in %s",
-    (column, overdue, glyph, color, status) => {
-      render(<PlannerChip task={{ ...TASK, column, overdue }} />)
+    "shows %s (overdue: %s, sent back: %s) as a 12px hidden %s glyph in %s",
+    (column, overdue, sentBack, glyph, color, status) => {
+      render(<PlannerChip task={{ ...TASK, column, overdue, sentBack }} />)
 
       const link = screen.getByRole("link", {
         name: `Masthead brief, ${status}, due Sat, Oct 10 at 5:00 PM`,
@@ -94,6 +133,9 @@ describe("PlannerChip", () => {
         </li>
         <li>
           <PlannerChip task={{ ...TASK, id: "x", overdue: true }} />
+        </li>
+        <li>
+          <PlannerChip task={{ ...TASK, id: "y", sentBack: true }} />
         </li>
       </ul>
     )

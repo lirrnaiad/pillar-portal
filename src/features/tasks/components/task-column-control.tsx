@@ -7,11 +7,7 @@ import { useCommand } from "@/lib/use-command"
 
 import { moveTaskAction } from "../actions"
 import { taskErrorMessage } from "../errors"
-import {
-  TASK_COLUMN_FAMILIES,
-  TASK_COLUMN_LABELS,
-  type TaskColumn,
-} from "../status"
+import { taskStatus, type TaskColumn } from "../status"
 import { MoveToSelect } from "./move-to-select"
 
 /**
@@ -19,7 +15,11 @@ import { MoveToSelect } from "./move-to-select"
  * listing exactly `allowedMoves` (task_capabilities' answer for this viewer)
  * when there are any. A move shows at once and rolls back, with a toast and
  * a refresh, if the database refuses it; the status is a polite live region,
- * so a screen reader hears both.
+ * so a screen reader hears both. A sent-back task reads "Sent back" until a
+ * move is shown: every move clears the note.
+ *
+ * The status is `#task-status`, where the review controls put focus once
+ * their command is saved.
  *
  * While a move is saving the select stays focusable (`aria-disabled`, not
  * `disabled`, which would drop focus to the page) and ignores input. If the
@@ -29,10 +29,13 @@ import { MoveToSelect } from "./move-to-select"
 export function TaskColumnControl({
   taskId,
   column,
+  sentBack,
   allowedMoves,
 }: {
   taskId: string
   column: TaskColumn
+  /** The task's revision note stands (task detail's revisionNote). */
+  sentBack: boolean
   allowedMoves: readonly TaskColumn[]
 }) {
   const { isPending, run } = useCommand({
@@ -41,6 +44,7 @@ export function TaskColumnControl({
   })
   const [shownColumn, setShownColumn] = useOptimistic(column)
   const statusRef = useRef<HTMLParagraphElement>(null)
+  const status = taskStatus(shownColumn, sentBack && shownColumn === column)
   const hasMoves = allowedMoves.length > 0
   const hadMoves = useRef(hasMoves)
 
@@ -65,16 +69,14 @@ export function TaskColumnControl({
     <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2">
       <p
         ref={statusRef}
+        id="task-status"
         tabIndex={-1}
         aria-live="polite"
         aria-atomic="true"
         className="flex items-center rounded-sm font-medium outline-offset-4 focus-visible:outline-2"
       >
         <span className="sr-only">Status: </span>
-        <StatusDot
-          family={TASK_COLUMN_FAMILIES[shownColumn]}
-          label={TASK_COLUMN_LABELS[shownColumn]}
-        />
+        <StatusDot family={status.family} label={status.label} />
       </p>
       {hasMoves && (
         <MoveToSelect

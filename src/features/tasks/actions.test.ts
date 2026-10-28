@@ -27,8 +27,11 @@ vi.mock("@/lib/env.client", () => ({
 import {
   createTaskAction,
   handBackSlotAction,
+  markDoneAction,
   moveTaskAction,
+  reopenTaskAction,
   respondToSlotAction,
+  sendBackTaskAction,
 } from "./actions"
 
 const MEMBER_ID = "00000000-0000-4000-8000-000000000001"
@@ -280,6 +283,9 @@ describe("error copy", () => {
       "tasks.not_found": "This task was deleted or the link is wrong.",
       "tasks.not_allowed": "Couldn't save — try again.",
       "tasks.save_failed": "Couldn't save — try again.",
+      "tasks.not_approver": "Only the task's head or a top editor can do that.",
+      "tasks.stale":
+        "Something changed since you opened this. Review the latest and try again.",
     })
   })
 })
@@ -343,6 +349,95 @@ describe("handBackSlotAction", () => {
   })
 })
 
+describe.each([
+  ["markDoneAction", markDoneAction, "mark_done", { column: "done" }],
+  ["reopenTaskAction", reopenTaskAction, "reopen_task", { column: "doing" }],
+] as const)("%s", (_name, action, rpcName, data) => {
+  it("rejects invalid input without calling the database", async () => {
+    const result = await action({ taskId: "abc" })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it(`calls ${rpcName}, then revalidates the dashboard and returns the new column`, async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    const result = await action({ taskId: TASK_ID })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith(rpcName, { task_id: TASK_ID })
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(result).toEqual({ ok: true, data })
+  })
+
+  it.each([
+    ["auth.not_active", "auth.not_active"],
+    ["tasks.not_found", "tasks.not_found"],
+    ["tasks.not_approver", "tasks.not_approver"],
+    ["tasks.stale", "tasks.stale"],
+    ["tasks.not_allowed", "tasks.save_failed"],
+    ["fetch failed", "tasks.save_failed"],
+  ])("maps the database error %s to %s without revalidating", async (message, code) => {
+    rpc.mockResolvedValue({ data: null, error: { message } })
+
+    const result = await action({ taskId: TASK_ID })
+
+    expect(result).toEqual({ ok: false, code })
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe("sendBackTaskAction", () => {
+  it("rejects invalid input without calling the database", async () => {
+    const result = await sendBackTaskAction({ taskId: "abc", note: "Fix" })
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it.each(["", "   ", "x".repeat(5001)])(
+    "rejects the note %j without calling the database",
+    async (note) => {
+      const result = await sendBackTaskAction({ taskId: TASK_ID, note })
+
+      expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+      expect(createClient).not.toHaveBeenCalled()
+    }
+  )
+
+  it("sends the trimmed note to send_back_task, then revalidates the dashboard", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    const result = await sendBackTaskAction({
+      taskId: TASK_ID,
+      note: "  fix captions ",
+    })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("send_back_task", {
+      task_id: TASK_ID,
+      note: "fix captions",
+    })
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(result).toEqual({ ok: true, data: { column: "doing" } })
+  })
+
+  it.each([
+    ["auth.not_active", "auth.not_active"],
+    ["tasks.not_found", "tasks.not_found"],
+    ["tasks.not_approver", "tasks.not_approver"],
+    ["tasks.stale", "tasks.stale"],
+    ["tasks.invalid_note", "tasks.save_failed"],
+    ["something unexpected", "tasks.save_failed"],
+  ])("maps the database error %s to %s without revalidating", async (message, code) => {
+    rpc.mockResolvedValue({ data: null, error: { message } })
+
+    const result = await sendBackTaskAction({ taskId: TASK_ID, note: "Fix" })
+
+    expect(result).toEqual({ ok: false, code })
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
 describe("recording unexpected errors", () => {
   // A raw database error, as PostgREST returns it.
   const RAW = {
@@ -381,6 +476,25 @@ describe("recording unexpected errors", () => {
       () => moveTaskAction({ taskId: TASK_ID, toColumn: "doing" }),
       { route: "action moveTaskAction", entityType: "task", entityId: TASK_ID },
     ],
+    [
+      "markDoneAction",
+      () => markDoneAction({ taskId: TASK_ID }),
+      { route: "action markDoneAction", entityType: "task", entityId: TASK_ID },
+    ],
+    [
+      "sendBackTaskAction",
+      () => sendBackTaskAction({ taskId: TASK_ID, note: "Fix" }),
+      {
+        route: "action sendBackTaskAction",
+        entityType: "task",
+        entityId: TASK_ID,
+      },
+    ],
+    [
+      "reopenTaskAction",
+      () => reopenTaskAction({ taskId: TASK_ID }),
+      { route: "action reopenTaskAction", entityType: "task", entityId: TASK_ID },
+    ],
   ])(
     "%s records an unexpected error after the response, with its action and entity",
     async (_name, call, where) => {
@@ -413,6 +527,20 @@ describe("recording unexpected errors", () => {
     }
   )
 
+  it("records send_back_task's backstop code tasks.invalid_note", async () => {
+    const error = { code: "P0001", message: "tasks.invalid_note" }
+    rpc.mockResolvedValue({ data: null, error })
+
+    await sendBackTaskAction({ taskId: TASK_ID, note: "Fix" })
+    await runAfter()
+
+    expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(error, {
+      route: "action sendBackTaskAction",
+      entityType: "task",
+      entityId: TASK_ID,
+    })
+  })
+
   it.each([
     [
       "createTaskAction",
@@ -433,6 +561,21 @@ describe("recording unexpected errors", () => {
       "moveTaskAction",
       () => moveTaskAction({ taskId: TASK_ID, toColumn: "doing" }),
       "auth.not_active",
+    ],
+    [
+      "markDoneAction",
+      () => markDoneAction({ taskId: TASK_ID }),
+      "tasks.not_approver",
+    ],
+    [
+      "sendBackTaskAction",
+      () => sendBackTaskAction({ taskId: TASK_ID, note: "Fix" }),
+      "tasks.stale",
+    ],
+    [
+      "reopenTaskAction",
+      () => reopenTaskAction({ taskId: TASK_ID }),
+      "tasks.not_found",
     ],
   ])("%s doesn't record a known code (%s)", async (_name, call, message) => {
     rpc.mockResolvedValue({ data: null, error: { code: "P0001", message } })
@@ -466,6 +609,12 @@ describe("recording unexpected errors", () => {
       "moveTaskAction",
       () => moveTaskAction({ taskId: TASK_ID, toColumn: "x" }),
     ],
+    ["markDoneAction", () => markDoneAction({ taskId: "abc" })],
+    [
+      "sendBackTaskAction (a blank note)",
+      () => sendBackTaskAction({ taskId: TASK_ID, note: "  " }),
+    ],
+    ["reopenTaskAction", () => reopenTaskAction({ taskId: "abc" })],
   ])("%s doesn't record a parse failure", async (_name, call) => {
     await call()
 

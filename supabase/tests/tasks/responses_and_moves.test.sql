@@ -20,7 +20,7 @@ begin;
 set local role postgres;
 set local search_path = "$user", public, extensions;
 
-select plan(66);
+select plan(63);
 
 -- Fixtures.
 
@@ -38,6 +38,7 @@ begin
 end;
 $$;
 
+-- A Done task carries done_at (tasks_done_at_matches_column).
 create function pg_temp.new_task(
   p_id uuid,
   p_section text,
@@ -46,9 +47,12 @@ create function pg_temp.new_task(
 )
 returns void
 language sql as $$
-  insert into public.tasks (id, title, owning_section_id, owning_desk_id, due_at, "column")
+  insert into public.tasks (
+    id, title, owning_section_id, owning_desk_id, due_at, "column", done_at
+  )
   values (p_id, 'Fixture task ' || p_id, p_section, p_desk,
-          '2026-11-01T00:00:00+08', p_column)
+          '2026-11-01T00:00:00+08', p_column,
+          case when p_column = 'done' then now() end)
 $$;
 
 create function pg_temp.new_slot(
@@ -539,53 +543,29 @@ select bag_eq(
   'each move logs one activity row for the task'
 );
 
--- Prototype Done: any active member moves for_review -> done, then nothing
--- moves out of done and no move is offered to anyone.
+-- No move reaches done (tasks_approver_review deleted the prototype edge):
+-- from for_review, neither the on-it assignee nor another active member may
+-- move a task to done. Only mark_done does (approver_review.test.sql).
 
 select pg_temp.move_as(
   '00000000-0000-4000-a000-000000000002',
   '00000000-0000-4000-b000-000000000001', 'for_review'
 );
 
-select lives_ok(
-  $$ select pg_temp.move_as(
-       '00000000-0000-4000-a000-000000000003',
-       '00000000-0000-4000-b000-000000000001', 'done') $$,
-  'a non-assignee active member moves for_review -> done (the prototype edge)'
-);
-
-select results_eq(
-  $$ select "column"::text from public.tasks
-     where id = '00000000-0000-4000-b000-000000000001' $$,
-  $$ values ('done') $$,
-  'the task is done'
-);
-
 select throws_ok(
   $$ select pg_temp.move_as(
        '00000000-0000-4000-a000-000000000002',
-       '00000000-0000-4000-b000-000000000001', 'for_review') $$,
+       '00000000-0000-4000-b000-000000000001', 'done') $$,
   'P0001', 'tasks.not_allowed',
-  'nothing leaves done: the on-it assignee is refused'
+  'the on-it assignee can''t move for_review -> done'
 );
 
 select throws_ok(
   $$ select pg_temp.move_as(
-       '00000000-0000-4000-a000-000000000008',
-       '00000000-0000-4000-b000-000000000001', 'to_do') $$,
+       '00000000-0000-4000-a000-000000000003',
+       '00000000-0000-4000-b000-000000000001', 'done') $$,
   'P0001', 'tasks.not_allowed',
-  'nothing leaves done: a top editor is refused'
-);
-
-select is(
-  array[
-    pg_temp.query_as('00000000-0000-4000-a000-000000000002', $q$ select allowed_moves::text from public.task_capabilities('{00000000-0000-4000-b000-000000000001}') $q$),
-    pg_temp.query_as('00000000-0000-4000-a000-000000000003', $q$ select allowed_moves::text from public.task_capabilities('{00000000-0000-4000-b000-000000000001}') $q$),
-    pg_temp.query_as('00000000-0000-4000-a000-000000000004', $q$ select allowed_moves::text from public.task_capabilities('{00000000-0000-4000-b000-000000000001}') $q$),
-    pg_temp.query_as('00000000-0000-4000-a000-000000000008', $q$ select allowed_moves::text from public.task_capabilities('{00000000-0000-4000-b000-000000000001}') $q$)
-  ],
-  array['{}', '{}', '{}', '{}'],
-  'no move out of done is offered to the assignee, other staff, the Head or a top editor'
+  'a non-assignee active member can''t move for_review -> done'
 );
 
 -- Can't take this: the reason is trimmed and stored only for a
@@ -746,7 +726,7 @@ select is(
                 or private.is_task_approver('00000000-0000-4000-b000-000000000024'))::text $q$
   ),
   'false',
-  'a pending caller gets false from every helper, even on their own slot and the prototype edge'
+  'a pending caller gets false from every helper, even on their own slot'
 );
 
 select is(
@@ -873,20 +853,18 @@ insert into caps_expected values
   ('assignee', '00000000-0000-4000-b000-000000000021', '{}', '{00000000-0000-4000-c000-000000000021}'),
   ('assignee', '00000000-0000-4000-b000-000000000022', '{doing,for_review}', '{}'),
   ('assignee', '00000000-0000-4000-b000-000000000023', '{to_do,for_review}', '{}'),
-  ('assignee', '00000000-0000-4000-b000-000000000024', '{to_do,doing,done}', '{}'),
+  ('assignee', '00000000-0000-4000-b000-000000000024', '{to_do,doing}', '{}'),
   ('assignee', '00000000-0000-4000-b000-000000000025', '{}', '{}'),
-  ('assignee', '00000000-0000-4000-b000-000000000026', '{done}', '{00000000-0000-4000-c000-000000000028}'),
+  ('assignee', '00000000-0000-4000-b000-000000000026', '{}', '{00000000-0000-4000-c000-000000000028}'),
   ('assignee', '00000000-0000-4000-b000-000000000027', '{}', '{}');
 
--- Everyone else active: only the prototype edge on the two For Review tasks,
--- and the other staff member's own awaiting slot on b21. A pending caller
--- reads no task, so gets no row at all.
+-- Everyone else active: no move, and only the other staff member's own
+-- awaiting slot on b21. A pending caller reads no task, so gets no row at
+-- all.
 insert into caps_expected
 select c.caller,
        t.id,
-       case when t.id in ('00000000-0000-4000-b000-000000000024',
-                          '00000000-0000-4000-b000-000000000026')
-         then '{done}' else '{}' end,
+       '{}',
        case when c.caller = 'other staff'
               and t.id = '00000000-0000-4000-b000-000000000021'
          then '{00000000-0000-4000-c000-000000000022}' else '{}' end
@@ -961,9 +939,11 @@ begin
       into v_obs_tasks, v_obs_moves, v_obs_slots
     from public.task_capabilities(v_tasks) k;
 
-    -- Every move: offered exactly when move_task accepts it.
+    -- Every move but to done: offered exactly when move_task accepts it.
+    -- (approver_review.test.sql probes done for every caller.)
     foreach v_task in array v_tasks loop
       foreach v_column in array enum_range(null::public.task_column) loop
+        continue when v_column = 'done';
         v_offered := coalesce((
           select v_column = any (k.allowed_moves)
           from public.task_capabilities(array[v_task]) k

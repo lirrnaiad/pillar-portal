@@ -2,6 +2,7 @@ import Link from "next/link"
 import {
   Circle,
   CircleAlert,
+  CircleArrowLeft,
   CircleCheck,
   CircleDot,
   type LucideIcon,
@@ -27,6 +28,7 @@ const GLYPHS: Record<
   for_review: { icon: CircleDot, className: "text-status-progress" },
   done: { icon: CircleCheck, className: "text-status-positive" },
   overdue: { icon: CircleAlert, className: "text-status-attention" },
+  sent_back: { icon: CircleArrowLeft, className: "text-status-attention" },
 }
 
 /**
