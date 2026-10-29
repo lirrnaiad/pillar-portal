@@ -22,12 +22,13 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
+import { toast } from "sonner"
 
 import { StatusDot } from "@/components/status-badge"
 import { useCommand } from "@/lib/use-command"
 import { cn } from "@/lib/utils"
 
-import { moveTaskAction } from "../actions"
+import { markDoneAction, moveTaskAction } from "../actions"
 import { BOARD_ROW_HEIGHT } from "../board"
 import {
   BOARD_KEYBOARD_CODES,
@@ -56,13 +57,15 @@ type HowMoved = "select" | "drag"
  * column; from `lg` the four share the width. Every column is full height and
  * its card list scrolls inside it.
  *
- * A card moves two ways, both through `moveTaskAction` and both offering only
- * the card's `allowedMoves` (AD-4): dragging the card (mouse after 8px, touch
- * after a 250ms hold, keyboard with Space on its title link) and its "Move
- * to…" select, the non-drag equivalent (WCAG 2.5.7). The card changes column
- * at once; a refused or thrown move puts it back, toasts the error's copy and
- * refreshes. One move saves at a time: meanwhile every control ignores input
- * and drag is off.
+ * A card moves two ways, both offering only the card's `moves` (AD-4):
+ * dragging the card (mouse after 8px, touch after a 250ms hold, keyboard
+ * with Space on its title link) and its "Move to…" select, the non-drag
+ * equivalent (WCAG 2.5.7). A move to Done (offered only to the approver of a
+ * For Review card) calls `markDoneAction` and toasts "Marked done." once
+ * saved; any other move calls `moveTaskAction` and stays silent. The card
+ * changes column at once; a refused or thrown move puts it back, toasts the
+ * error's copy and refreshes. One move saves at a time: meanwhile every
+ * control ignores input and drag is off.
  *
  * Focus follows the moved card. Its old element unmounts and a new one mounts
  * in the target column (and again on a rollback), so a layout effect puts
@@ -142,12 +145,24 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
     if (!isPending) lastMoved.current = null
   })
 
+  // The target decides the command, never who is moving: move_task never
+  // enters Done, so mark_done is its only way in.
   function move(taskId: string, toColumn: TaskColumn, how: HowMoved) {
-    run(() => {
-      lastMoved.current = { taskId, how }
-      applyMove({ taskId, toColumn })
-      return moveTaskAction({ taskId, toColumn })
-    })
+    const toDone = toColumn === "done"
+    run(
+      () => {
+        lastMoved.current = { taskId, how }
+        applyMove({ taskId, toColumn })
+        return toDone
+          ? markDoneAction({ taskId })
+          : moveTaskAction({ taskId, toColumn })
+      },
+      {
+        onSuccess: () => {
+          if (toDone) toast.success("Marked done.")
+        },
+      }
+    )
   }
 
   function guardClickAfterDrag() {
@@ -176,7 +191,7 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
 
   function handleDragOver(event: DragOverEvent) {
     const card = shownCards.find((c) => c.id === event.active.id)
-    setOverColumn(card ? dropColumn(card.allowedMoves, event.over?.id) : null)
+    setOverColumn(card ? dropColumn(card.moves, event.over?.id) : null)
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -185,7 +200,7 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
     setActiveId(null)
     setOverColumn(null)
     if (!card) return
-    const toColumn = dropColumn(card.allowedMoves, event.over?.id)
+    const toColumn = dropColumn(card.moves, event.over?.id)
     if (toColumn) move(card.id, toColumn, "drag")
   }
 
@@ -276,7 +291,7 @@ function BoardColumn({
   onMove: (taskId: string, toColumn: TaskColumn, how: HowMoved) => void
 }) {
   // A column takes a drop only while a card that may move there is held.
-  const accepts = !!activeCard && activeCard.allowedMoves.includes(column)
+  const accepts = !!activeCard && activeCard.moves.includes(column)
   const { setNodeRef } = useDroppable({ id: column, disabled: !accepts })
   const headingId = `board-column-${column}`
 
@@ -335,7 +350,7 @@ function BoardCardItem({
   isPending: boolean
   onMove: (taskId: string, toColumn: TaskColumn, how: HowMoved) => void
 }) {
-  const movable = card.allowedMoves.length > 0
+  const movable = card.moves.length > 0
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } =
     useDraggable({ id: card.id, disabled: isPending || !movable })
 
@@ -367,7 +382,7 @@ function BoardCardItem({
           // The select must never start a drag.
           <div className="mt-3" onMouseDown={stop} onTouchStart={stop}>
             <MoveToSelect
-              allowedMoves={card.allowedMoves}
+              allowedMoves={card.moves}
               pending={isPending}
               onMove={(toColumn) => onMove(card.id, toColumn, "select")}
               label={`Move to…, ${card.title}`}

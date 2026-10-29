@@ -40,18 +40,25 @@ export async function getBoardOwners(): Promise<TaskOwnerOption[]> {
 }
 
 export type BoardCard = TaskCardData & {
-  /** From task_capabilities' allowed_moves (AD-4), in enum order. */
-  allowedMoves: TaskColumn[]
+  /**
+   * Every column the viewer may put the card in, from task_capabilities and
+   * nothing else (AD-4): its allowed_moves in enum order, then Done when its
+   * can_review is true. allowed_moves never holds Done (move_task never
+   * enters it), so Done stays last and only the approver of a For Review
+   * card gets it.
+   */
+  moves: TaskColumn[]
 }
 
 /**
  * Every task the filter names, as cards ordered by due date then id. The
  * slots come embedded in the tasks query (a Board can hold hundreds of
  * tasks, too many for an `.in()` list); with no tasks it stops there,
- * otherwise task_capabilities and the names from member_directory (never
- * `members`) are read together. The whole directory is read rather than an
- * `.in()` of slot members: over the years those ids could outgrow a URL,
- * while the directory holds only active members. Throws on any query error.
+ * otherwise task_capabilities (whose row gives each card its `moves`) and
+ * the names from member_directory (never `members`) are read together. The
+ * whole directory is read rather than an `.in()` of slot members: over the
+ * years those ids could outgrow a URL, while the directory holds only active
+ * members. Throws on any query error.
  */
 export async function getBoard(filter: OwnerFilter): Promise<BoardCard[]> {
   const supabase = await createClient()
@@ -81,16 +88,20 @@ export async function getBoard(filter: OwnerFilter): Promise<BoardCard[]> {
   }
 
   const nameById = nameMap(membersResult.data ?? [])
-  const movesByTask = new Map(
-    (capabilitiesResult.data ?? []).map((row) => [
-      row.task_id,
-      row.allowed_moves,
-    ])
+  const capabilitiesByTask = new Map(
+    (capabilitiesResult.data ?? []).map((row) => [row.task_id, row])
   )
 
   const now = new Date()
-  return tasks.map((task) => ({
-    ...toTaskCard(task, task.task_assignments, nameById, now),
-    allowedMoves: movesByTask.get(task.id) ?? [],
-  }))
+  return tasks.map((task) => {
+    const capabilities = capabilitiesByTask.get(task.id)
+    return {
+      ...toTaskCard(task, task.task_assignments, nameById, now),
+      // The one place can_review becomes the Done target.
+      moves: [
+        ...(capabilities?.allowed_moves ?? []),
+        ...(capabilities?.can_review ? (["done"] as const) : []),
+      ],
+    }
+  })
 }

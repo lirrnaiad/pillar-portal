@@ -286,6 +286,8 @@ export async function markDoneAction(input: unknown): Promise<MarkDoneState> {
   }
 
   revalidatePath("/dashboard", "layout")
+  // The review queue and Admin home's count.
+  revalidatePath("/admin", "layout")
   return { ok: true, data: { column: "done" } }
 }
 
@@ -321,6 +323,8 @@ export async function sendBackTaskAction(
   }
 
   revalidatePath("/dashboard", "layout")
+  // The review queue and Admin home's count.
+  revalidatePath("/admin", "layout")
   return { ok: true, data: { column: "doing" } }
 }
 
@@ -353,5 +357,8 @@ export async function reopenTaskAction(
   }
 
   revalidatePath("/dashboard", "layout")
+  // Every approver command revalidates the admin pages too: they read the
+  // same tasks.
+  revalidatePath("/admin", "layout")
   return { ok: true, data: { column: "doing" } }
 }

@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest"
 
-import { cleanup, render, screen, within } from "@testing-library/react"
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -9,14 +15,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { TaskDetail } from "../queries/task-detail"
 import { TaskDetailView } from "./task-detail-view"
 
-const { handBackSlotAction } = vi.hoisted(() => ({
-  handBackSlotAction: vi.fn(),
-}))
+const { handBackSlotAction, markDoneAction, reopenTaskAction } = vi.hoisted(
+  () => ({
+    handBackSlotAction: vi.fn(),
+    markDoneAction: vi.fn(),
+    reopenTaskAction: vi.fn(),
+  })
+)
 vi.mock("../actions", () => ({
   handBackSlotAction,
-  markDoneAction: vi.fn(),
+  markDoneAction,
   moveTaskAction: vi.fn(),
-  reopenTaskAction: vi.fn(),
+  reopenTaskAction,
   respondToSlotAction: vi.fn(),
   sendBackTaskAction: vi.fn(),
 }))
@@ -411,6 +421,42 @@ describe("TaskDetailView", () => {
     )
     expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull()
     expect(screen.getByRole("button", { name: "Reopen" })).toBeInTheDocument()
+  })
+
+  // TaskReview's focus target and the status element share one id; a
+  // mismatch would leave focus on the page after a save.
+  it("puts focus on the status after Mark done", async () => {
+    const user = userEvent.setup()
+    markDoneAction.mockResolvedValue({ ok: true, data: { column: "done" } })
+    render(
+      <TaskDetailView
+        task={{ ...TASK, column: "for_review", canReview: true }}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: "Mark done" }))
+
+    await waitFor(() =>
+      expect(document.getElementById("task-status")).toHaveFocus()
+    )
+    expect(markDoneAction).toHaveBeenCalledWith({ taskId: TASK.id })
+  })
+
+  it("puts focus on the status after Reopen", async () => {
+    const user = userEvent.setup()
+    reopenTaskAction.mockResolvedValue({ ok: true, data: { column: "doing" } })
+    render(
+      <TaskDetailView
+        task={{ ...TASK, column: "done", allowedMoves: [], canReopen: true }}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: "Reopen" }))
+
+    await waitFor(() =>
+      expect(document.getElementById("task-status")).toHaveFocus()
+    )
+    expect(reopenTaskAction).toHaveBeenCalledWith({ taskId: TASK.id })
   })
 
   it("omits the reference link row and the description when they're empty", () => {

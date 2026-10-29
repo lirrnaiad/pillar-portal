@@ -28,11 +28,20 @@ type DragHandlers = {
   onDragCancel: (event: unknown) => void
 }
 
-const { dnd, moveTaskAction, refresh, toastError } = vi.hoisted(() => ({
+const {
+  dnd,
+  moveTaskAction,
+  markDoneAction,
+  refresh,
+  toastError,
+  toastSuccess,
+} = vi.hoisted(() => ({
   dnd: { current: null as DragHandlers | null },
   moveTaskAction: vi.fn(),
+  markDoneAction: vi.fn(),
   refresh: vi.fn(),
   toastError: vi.fn(),
+  toastSuccess: vi.fn(),
 }))
 
 vi.mock("@dnd-kit/core", async (importOriginal) => {
@@ -46,9 +55,11 @@ vi.mock("@dnd-kit/core", async (importOriginal) => {
     },
   }
 })
-vi.mock("../actions", () => ({ moveTaskAction }))
+vi.mock("../actions", () => ({ moveTaskAction, markDoneAction }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }))
-vi.mock("sonner", () => ({ toast: { error: toastError, success: vi.fn() } }))
+vi.mock("sonner", () => ({
+  toast: { error: toastError, success: toastSuccess },
+}))
 
 beforeEach(() => {
   Element.prototype.hasPointerCapture ??= () => false
@@ -77,7 +88,7 @@ function card(
     hasAwaitingResponse: false,
     hasNeedsReassignment: false,
     assignees: [],
-    allowedMoves: [],
+    moves: [],
     ...overrides,
   }
 }
@@ -85,14 +96,29 @@ function card(
 const SPREAD = card(1, {
   title: "Lay out the spread",
   column: "to_do",
-  allowedMoves: ["doing"],
+  moves: ["doing"],
 })
 const PHOTOS = card(3, {
   title: "Edit the photos",
   column: "doing",
-  allowedMoves: ["to_do", "for_review"],
+  moves: ["to_do", "for_review"],
+})
+// For Review cards: the approver's moves end with Done (can_review); an
+// assignee's never hold it.
+const REVIEWED = card(5, {
+  title: "Check the proofs",
+  column: "for_review",
+  moves: ["done"],
+})
+const ASSIGNED = card(6, {
+  title: "Caption the photos",
+  column: "for_review",
+  moves: ["to_do", "doing"],
 })
 const CARDS = [SPREAD, PHOTOS]
+
+const STALE =
+  "Something changed since you opened this. Review the latest and try again."
 
 const column = (label: string) =>
   screen.getByRole("region", { name: new RegExp(`^${label}\\s*,`) })
@@ -146,6 +172,7 @@ describe("TaskBoard drag", () => {
       taskId: SPREAD.id,
       toColumn: "doing",
     })
+    expect(markDoneAction).not.toHaveBeenCalled()
     await waitFor(() =>
       expect(
         within(column("Doing")).getByRole("heading", {
@@ -154,6 +181,8 @@ describe("TaskBoard drag", () => {
         })
       ).toBeInTheDocument()
     )
+    // Only a Done move toasts.
+    expect(toastSuccess).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -171,6 +200,90 @@ describe("TaskBoard drag", () => {
       within(column("To Do")).getByText("Lay out the spread")
     ).toBeInTheDocument()
   })
+
+  it("moves a card dropped on Done through markDoneAction, never moveTaskAction, and toasts once saved", async () => {
+    markDoneAction.mockResolvedValue({ ok: true, data: { column: "done" } })
+    render(<TaskBoard cards={[REVIEWED, ASSIGNED]} />)
+
+    drag(REVIEWED, "done")
+
+    expect(markDoneAction).toHaveBeenCalledExactlyOnceWith({
+      taskId: REVIEWED.id,
+    })
+    expect(moveTaskAction).not.toHaveBeenCalled()
+    // At once, before the save resolves.
+    expect(
+      within(column("Done")).getByRole("heading", {
+        level: 3,
+        name: "Check the proofs",
+      })
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledExactlyOnceWith("Marked done.")
+    )
+  })
+
+  it("rings Done only while a card whose moves hold it is held over it", () => {
+    render(<TaskBoard cards={[REVIEWED, ASSIGNED]} />)
+    const over = (task: BoardCard) => {
+      const active = { id: task.id }
+      act(() => handlers().onDragStart({ active, activatorEvent: pointer() }))
+      act(() =>
+        handlers().onDragOver({
+          active,
+          over: { id: "done" },
+          activatorEvent: pointer(),
+        })
+      )
+      const ringed = column("Done").classList.contains("ring-2")
+      act(() =>
+        handlers().onDragCancel({
+          active,
+          over: null,
+          activatorEvent: pointer(),
+        })
+      )
+      return ringed
+    }
+
+    expect(over(REVIEWED)).toBe(true)
+    expect(over(ASSIGNED)).toBe(false)
+  })
+
+  it("does nothing when a card whose moves lack Done is dropped there", () => {
+    render(<TaskBoard cards={[REVIEWED, ASSIGNED]} />)
+
+    drag(ASSIGNED, "done")
+
+    expect(markDoneAction).not.toHaveBeenCalled()
+    expect(moveTaskAction).not.toHaveBeenCalled()
+    expect(
+      within(column("For Review")).getByText("Caption the photos")
+    ).toBeInTheDocument()
+  })
+
+  it.each([
+    ["tasks.not_approver", "Only the task's head or a top editor can do that."],
+    ["tasks.stale", STALE],
+  ])(
+    "puts a card dropped on Done back when refused with %s, toasts and refreshes",
+    async (code, copy) => {
+      markDoneAction.mockResolvedValue({ ok: false, code })
+      render(<TaskBoard cards={[REVIEWED, ASSIGNED]} />)
+
+      drag(REVIEWED, "done")
+
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith(copy))
+      expect(refresh).toHaveBeenCalledOnce()
+      await waitFor(() =>
+        expect(
+          within(column("For Review")).getByText("Check the proofs")
+        ).toBeInTheDocument()
+      )
+      expect(within(column("Done")).queryByText("Check the proofs")).toBeNull()
+      expect(toastSuccess).not.toHaveBeenCalled()
+    }
+  )
 
   it("does nothing on a cancelled drag", () => {
     render(<TaskBoard cards={CARDS} />)

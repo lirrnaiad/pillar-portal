@@ -360,13 +360,17 @@ describe.each([
     expect(createClient).not.toHaveBeenCalled()
   })
 
-  it(`calls ${rpcName}, then revalidates the dashboard and returns the new column`, async () => {
+  it(`calls ${rpcName}, then revalidates the dashboard and the admin pages and returns the new column`, async () => {
     rpc.mockResolvedValue({ data: null, error: null })
 
     const result = await action({ taskId: TASK_ID })
 
     expect(rpc).toHaveBeenCalledExactlyOnceWith(rpcName, { task_id: TASK_ID })
-    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    // The admin layout holds the review queue and Admin home's count.
+    expect(revalidatePath.mock.calls).toEqual([
+      ["/dashboard", "layout"],
+      ["/admin", "layout"],
+    ])
     expect(result).toEqual({ ok: true, data })
   })
 
@@ -405,7 +409,7 @@ describe("sendBackTaskAction", () => {
     }
   )
 
-  it("sends the trimmed note to send_back_task, then revalidates the dashboard", async () => {
+  it("sends the trimmed note to send_back_task, then revalidates the dashboard and the admin pages", async () => {
     rpc.mockResolvedValue({ data: null, error: null })
 
     const result = await sendBackTaskAction({
@@ -417,7 +421,10 @@ describe("sendBackTaskAction", () => {
       task_id: TASK_ID,
       note: "fix captions",
     })
-    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(revalidatePath.mock.calls).toEqual([
+      ["/dashboard", "layout"],
+      ["/admin", "layout"],
+    ])
     expect(result).toEqual({ ok: true, data: { column: "doing" } })
   })
 

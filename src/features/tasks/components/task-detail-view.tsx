@@ -13,6 +13,7 @@ import { HandBack } from "./hand-back"
 import { SlotResponse } from "./slot-response"
 import { TaskColumnControl } from "./task-column-control"
 import { TaskReview } from "./task-review"
+import { TASK_STATUS_ID } from "./task-status-id"
 
 const DUE_FORMAT = "EEE, MMM d, yyyy 'at' h:mm a"
 const NOTE_DATE_FORMAT = "EEE, MMM d, yyyy"
@@ -88,6 +89,7 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
         taskId={task.id}
         canReview={task.canReview}
         canReopen={task.canReopen}
+        focusTargetId={TASK_STATUS_ID}
       />
 
       {handBackSlots.length > 0 && (

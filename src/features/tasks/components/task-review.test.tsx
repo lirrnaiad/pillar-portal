@@ -68,10 +68,37 @@ function Page({
         taskId={TASK_ID}
         canReview={canReview}
         canReopen={canReopen}
+        focusTargetId="task-status"
       />
     </main>
   )
 }
+
+// A list of tasks (the review queue): its own focus target, and buttons
+// named for their task.
+function ListPage({ shown = true }: { shown?: boolean }) {
+  return (
+    <main>
+      <h1 id="list-heading" tabIndex={-1}>
+        Tasks
+      </h1>
+      <p id="task-status" tabIndex={-1}>
+        Status: For Review
+      </p>
+      {shown && (
+        <TaskReview
+          taskId={TASK_ID}
+          canReview
+          canReopen={false}
+          taskTitle="Lay out the spread"
+          focusTargetId="list-heading"
+        />
+      )}
+    </main>
+  )
+}
+
+const listHeading = () => document.getElementById("list-heading")!
 
 const status = () => document.getElementById("task-status")!
 const markDone = () => screen.getByRole("button", { name: "Mark done" })
@@ -90,7 +117,12 @@ function pendingCall(action: ReturnType<typeof vi.fn>) {
 describe("TaskReview", () => {
   it("shows nothing when task_capabilities offers neither review nor reopen", () => {
     const { container } = render(
-      <TaskReview taskId={TASK_ID} canReview={false} canReopen={false} />
+      <TaskReview
+        taskId={TASK_ID}
+        canReview={false}
+        canReopen={false}
+        focusTargetId="task-status"
+      />
     )
 
     expect(container).toBeEmptyDOMElement()
@@ -128,6 +160,50 @@ describe("TaskReview", () => {
     )
     expect(markDoneAction).toHaveBeenCalledExactlyOnceWith({ taskId: TASK_ID })
     expect(status()).toHaveFocus()
+  })
+
+  it("still focuses the status after Mark done when focus has fallen to the page", async () => {
+    const user = userEvent.setup()
+    let settle: (value: unknown) => void = () => {}
+    markDoneAction.mockReturnValue(new Promise((resolve) => (settle = resolve)))
+    render(<Page canReview />)
+
+    await user.click(markDone())
+    await waitFor(() =>
+      expect(markDone()).toHaveAttribute("aria-disabled", "true")
+    )
+    markDone().blur()
+    expect(document.activeElement).toBe(document.body)
+
+    settle({ ok: true, data: { column: "done" } })
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Marked done.")
+    )
+    expect(status()).toHaveFocus()
+  })
+
+  it("leaves focus alone after Reopen when it has moved off the buttons", async () => {
+    const user = userEvent.setup()
+    let settle: (value: unknown) => void = () => {}
+    reopenTaskAction.mockReturnValue(
+      new Promise((resolve) => (settle = resolve))
+    )
+    render(<Page canReopen />)
+
+    await user.click(reopen())
+    await waitFor(() =>
+      expect(reopen()).toHaveAttribute("aria-disabled", "true")
+    )
+    const elsewhere = document.createElement("button")
+    document.body.append(elsewhere)
+    elsewhere.focus()
+
+    settle({ ok: true, data: { column: "doing" } })
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Reopened."))
+    expect(elsewhere).toHaveFocus()
+    elsewhere.remove()
   })
 
   it("reopens the task, then toasts and focuses the status", async () => {
@@ -412,6 +488,103 @@ describe("TaskReview", () => {
     await user.click(sendBackTrigger())
     expect(noteInput()).toHaveValue("")
     expect(sendBackTaskAction).not.toHaveBeenCalled()
+  })
+
+  it("names Mark done and Send back with note for the task when given its title, keeping the visible text", () => {
+    render(<ListPage />)
+
+    const done = screen.getByRole("button", {
+      name: "Mark done, Lay out the spread",
+    })
+    const trigger = screen.getByRole("button", {
+      name: "Send back with note, Lay out the spread",
+    })
+    expect(done).toHaveTextContent(/^Mark done$/)
+    expect(trigger).toHaveTextContent(/^Send back with note$/)
+  })
+
+  it("leaves the buttons named by their text without a title", () => {
+    render(<Page canReview />)
+
+    expect(markDone()).not.toHaveAttribute("aria-label")
+    expect(sendBackTrigger()).not.toHaveAttribute("aria-label")
+  })
+
+  it("focuses the given target, not the status, after Mark done", async () => {
+    const user = userEvent.setup()
+    markDoneAction.mockResolvedValue({ ok: true, data: { column: "done" } })
+    render(<ListPage />)
+
+    await user.click(
+      screen.getByRole("button", { name: "Mark done, Lay out the spread" })
+    )
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Marked done.")
+    )
+    expect(listHeading()).toHaveFocus()
+  })
+
+  it("focuses the given target after Send back, once the dialog closes", async () => {
+    const user = userEvent.setup()
+    sendBackTaskAction.mockResolvedValue({
+      ok: true,
+      data: { column: "doing" },
+    })
+    render(<ListPage />)
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Send back with note, Lay out the spread",
+      })
+    )
+    await user.type(noteInput(), "Fix the captions")
+    await user.click(screen.getByRole("button", { name: "Send back" }))
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Sent back."))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    await waitFor(() => expect(listHeading()).toHaveFocus())
+  })
+
+  it("moves focus to the given target when the whole component goes away with focus on a button", async () => {
+    const user = userEvent.setup()
+    markDoneAction.mockResolvedValue({ ok: false, code: "tasks.stale" })
+    const { rerender } = render(<ListPage />)
+
+    await user.click(
+      screen.getByRole("button", { name: "Mark done, Lay out the spread" })
+    )
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce())
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Mark done, Lay out the spread" })
+      ).not.toHaveAttribute("aria-disabled")
+    )
+
+    // The refresh took the row away.
+    rerender(<ListPage shown={false} />)
+    expect(listHeading()).toHaveFocus()
+  })
+
+  it("drops the dialog and its note, focusing the given target, when a refresh takes the whole component away", async () => {
+    const user = userEvent.setup()
+    sendBackTaskAction.mockResolvedValue({ ok: false, code: "tasks.stale" })
+    const { rerender } = render(<ListPage />)
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Send back with note, Lay out the spread",
+      })
+    )
+    await user.type(noteInput(), "Fix the captions")
+    await user.click(screen.getByRole("button", { name: "Send back" }))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(STALE))
+
+    rerender(<ListPage shown={false} />)
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(screen.queryByText("Fix the captions")).toBeNull()
+    await waitFor(() => expect(listHeading()).toHaveFocus())
   })
 
   it("has no axe violations, with the buttons and with the dialog open", async () => {

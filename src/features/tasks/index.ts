@@ -46,6 +46,7 @@ export { PlannerChip } from "./components/planner-chip"
 export { PlannerDayList } from "./components/planner-day-list"
 export { PlannerGrid } from "./components/planner-grid"
 export { PlannerScopeToggle } from "./components/planner-scope-toggle"
+export { ReviewQueue } from "./components/review-queue"
 export { TaskBoard } from "./components/task-board"
 export { TaskChangesRefresher } from "./components/task-changes-refresher"
 export { TaskDetailView } from "./components/task-detail-view"
@@ -67,6 +68,10 @@ export { getBoard, getBoardOwners } from "./queries/board"
 export type { BoardCard } from "./queries/board"
 export { getTaskForCalendar } from "./queries/calendar"
 export { getPlanner } from "./queries/planner"
+export {
+  countReviewQueueForViewer,
+  getReviewQueue,
+} from "./queries/review-queue"
 export type { TaskCardAssignee, TaskCardData } from "./queries/shared"
 export { getTaskDetail } from "./queries/task-detail"
 export type {
