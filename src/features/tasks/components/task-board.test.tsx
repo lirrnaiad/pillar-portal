@@ -17,15 +17,20 @@ import { TaskBoard } from "./task-board"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { moveTaskAction, refresh, toastError } = vi.hoisted(() => ({
-  moveTaskAction: vi.fn(),
-  refresh: vi.fn(),
-  toastError: vi.fn(),
-}))
+const { moveTaskAction, markDoneAction, refresh, toastError, toastSuccess } =
+  vi.hoisted(() => ({
+    moveTaskAction: vi.fn(),
+    markDoneAction: vi.fn(),
+    refresh: vi.fn(),
+    toastError: vi.fn(),
+    toastSuccess: vi.fn(),
+  }))
 
-vi.mock("../actions", () => ({ moveTaskAction }))
+vi.mock("../actions", () => ({ moveTaskAction, markDoneAction }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }))
-vi.mock("sonner", () => ({ toast: { error: toastError, success: vi.fn() } }))
+vi.mock("sonner", () => ({
+  toast: { error: toastError, success: toastSuccess },
+}))
 
 // jsdom implements neither PointerEvent capture nor scrollIntoView, which
 // Radix's Select relies on to open/scroll its portal content.
@@ -63,7 +68,7 @@ function card(
     hasAwaitingResponse: false,
     hasNeedsReassignment: false,
     assignees: [],
-    allowedMoves: [],
+    moves: [],
     ...overrides,
   }
 }
@@ -71,17 +76,17 @@ function card(
 const SPREAD = card(1, {
   title: "Lay out the spread",
   column: "to_do",
-  allowedMoves: ["doing"],
+  moves: ["doing"],
 })
 const CARTOON = card(2, {
   title: "Draw the cartoon",
   column: "to_do",
-  allowedMoves: [],
+  moves: [],
 })
 const PHOTOS = card(3, {
   title: "Edit the photos",
   column: "doing",
-  allowedMoves: ["to_do", "for_review"],
+  moves: ["to_do", "for_review"],
 })
 const CARDS = [SPREAD, CARTOON, PHOTOS]
 
@@ -102,11 +107,27 @@ async function chooseMove(
 }
 
 // An action call that stays pending until the test settles it.
-function pendingCall() {
+function pendingCall(action: ReturnType<typeof vi.fn> = moveTaskAction) {
   let settle: (value: unknown) => void = () => {}
-  moveTaskAction.mockReturnValue(new Promise((resolve) => (settle = resolve)))
+  action.mockReturnValue(new Promise((resolve) => (settle = resolve)))
   return (value: unknown) => settle(value)
 }
+
+const STALE =
+  "Something changed since you opened this. Review the latest and try again."
+
+// A For Review card: its approver's moves end with Done (can_review), an
+// assignee's never do.
+const REVIEWED = card(5, {
+  title: "Check the proofs",
+  column: "for_review",
+  moves: ["done"],
+})
+const ASSIGNED = card(6, {
+  title: "Caption the photos",
+  column: "for_review",
+  moves: ["to_do", "doing"],
+})
 
 describe("TaskBoard", () => {
   it("shows four columns in order, each headed with its label and count", () => {
@@ -171,7 +192,7 @@ describe("TaskBoard", () => {
     ).toHaveAttribute("href", `/dashboard/tasks/${CARTOON.id}`)
   })
 
-  it("lists exactly the card's allowedMoves in its select", async () => {
+  it("lists exactly the card's moves in its select", async () => {
     const user = userEvent.setup()
     render(<TaskBoard cards={CARDS} />)
 
@@ -219,7 +240,113 @@ describe("TaskBoard", () => {
     )
     expect(toastError).not.toHaveBeenCalled()
     expect(refresh).not.toHaveBeenCalled()
+    // Board moves other than Done are silent.
+    expect(toastSuccess).not.toHaveBeenCalled()
+    expect(markDoneAction).not.toHaveBeenCalled()
   })
+
+  it("offers Done in a For Review card's select only when its moves hold it", async () => {
+    const user = userEvent.setup()
+    render(<TaskBoard cards={[REVIEWED, ASSIGNED]} />)
+
+    await user.click(moveSelect("Check the proofs"))
+    expect(
+      (await screen.findAllByRole("option")).map((option) => option.textContent)
+    ).toEqual(["Done"])
+    await user.keyboard("{Escape}")
+
+    await user.click(moveSelect("Caption the photos"))
+    expect(
+      (await screen.findAllByRole("option")).map((option) => option.textContent)
+    ).toEqual(["To Do", "Doing"])
+  })
+
+  it("puts focus on the card's title link once a select move to Done leaves it with no select", async () => {
+    const user = userEvent.setup()
+    const settle = pendingCall(markDoneAction)
+    const { rerender } = render(<TaskBoard cards={[REVIEWED, ASSIGNED]} />)
+
+    await chooseMove(user, "Check the proofs", "Done")
+    await waitFor(() => expect(moveSelect("Check the proofs")).toHaveFocus())
+
+    settle({ ok: true, data: { column: "done" } })
+    // What revalidation hands back: Done, with nothing more to offer.
+    rerender(
+      <TaskBoard
+        cards={[{ ...REVIEWED, column: "done", moves: [] }, ASSIGNED]}
+      />
+    )
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Marked done.")
+    )
+    const moved = within(column("Done")).getByRole("article")
+    expect(within(moved).queryByRole("combobox")).toBeNull()
+    await waitFor(() =>
+      expect(
+        within(moved).getByRole("link", { name: "Check the proofs" })
+      ).toHaveFocus()
+    )
+  })
+
+  it("moves a card to Done at once through markDoneAction, never moveTaskAction, and toasts once saved", async () => {
+    const user = userEvent.setup()
+    const settle = pendingCall(markDoneAction)
+    render(<TaskBoard cards={[REVIEWED, ASSIGNED]} />)
+
+    await chooseMove(user, "Check the proofs", "Done")
+
+    // Still saving: the move already shows, and nothing is toasted yet.
+    expect(markDoneAction).toHaveBeenCalledExactlyOnceWith({
+      taskId: REVIEWED.id,
+    })
+    expect(moveTaskAction).not.toHaveBeenCalled()
+    expect(
+      within(column("Done")).getByRole("heading", {
+        level: 3,
+        name: "Check the proofs",
+      })
+    ).toBeInTheDocument()
+    expect(
+      within(column("For Review")).queryByText("Check the proofs")
+    ).toBeNull()
+    expect(toastSuccess).not.toHaveBeenCalled()
+
+    settle({ ok: true, data: { column: "done" } })
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledExactlyOnceWith("Marked done.")
+    )
+    expect(toastError).not.toHaveBeenCalled()
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["tasks.not_approver", "Only the task's head or a top editor can do that."],
+    ["tasks.stale", STALE],
+  ])(
+    "puts a Done move refused with %s back, toasts its copy and refreshes",
+    async (code, copy) => {
+      const user = userEvent.setup()
+      markDoneAction.mockResolvedValue({ ok: false, code })
+      render(<TaskBoard cards={[REVIEWED, ASSIGNED]} />)
+
+      await chooseMove(user, "Check the proofs", "Done")
+
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith(copy))
+      expect(refresh).toHaveBeenCalledOnce()
+      await waitFor(() =>
+        expect(
+          within(column("For Review")).getByRole("heading", {
+            level: 3,
+            name: "Check the proofs",
+          })
+        ).toBeInTheDocument()
+      )
+      expect(within(column("Done")).queryByText("Check the proofs")).toBeNull()
+      expect(toastSuccess).not.toHaveBeenCalled()
+      expect(moveTaskAction).not.toHaveBeenCalled()
+    }
+  )
 
   it("puts a refused move back, toasts the copy, refreshes and refocuses the select", async () => {
     const user = userEvent.setup()
@@ -251,7 +378,7 @@ describe("TaskBoard", () => {
       title: "Fix the captions",
       column: "doing",
       sentBack: true,
-      allowedMoves: ["for_review"],
+      moves: ["for_review"],
     })
     render(<TaskBoard cards={[sentBack]} />)
 

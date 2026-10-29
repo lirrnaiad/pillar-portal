@@ -9,6 +9,7 @@ import { moveTaskAction } from "../actions"
 import { taskErrorMessage } from "../errors"
 import { taskStatus, type TaskColumn } from "../status"
 import { MoveToSelect } from "./move-to-select"
+import { TASK_STATUS_ID } from "./task-status-id"
 
 /**
  * The task's column as a status dot with its label, plus a "Move to…" select
@@ -18,8 +19,8 @@ import { MoveToSelect } from "./move-to-select"
  * so a screen reader hears both. A sent-back task reads "Sent back" until a
  * move is shown: every move clears the note.
  *
- * The status is `#task-status`, where the review controls put focus once
- * their command is saved.
+ * The status is `#task-status` (TASK_STATUS_ID), where the review controls
+ * put focus once their command is saved.
  *
  * While a move is saving the select stays focusable (`aria-disabled`, not
  * `disabled`, which would drop focus to the page) and ignores input. If the
@@ -69,7 +70,7 @@ export function TaskColumnControl({
     <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2">
       <p
         ref={statusRef}
-        id="task-status"
+        id={TASK_STATUS_ID}
         tabIndex={-1}
         aria-live="polite"
         aria-atomic="true"

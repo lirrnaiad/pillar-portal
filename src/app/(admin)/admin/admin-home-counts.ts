@@ -1,4 +1,5 @@
 import { countPendingApprovalsForViewer } from "@/features/members"
+import { countReviewQueueForViewer } from "@/features/tasks"
 
 import type { AdminHomeCard } from "./admin-home"
 
@@ -19,5 +20,11 @@ export const ADMIN_HOME_COUNTS: readonly AdminHomeCount[] = [
     label: "Awaiting approval",
     href: "/admin/members",
     count: countPendingApprovalsForViewer,
+  },
+  {
+    id: "review-queue",
+    label: "Waiting for your review",
+    href: "/admin/tasks",
+    count: countReviewQueueForViewer,
   },
 ]

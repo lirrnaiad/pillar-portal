@@ -75,6 +75,9 @@ function mockBoard(fixture: Fixture = {}) {
           task_id: T1,
           allowed_moves: ["to_do", "for_review"],
           respondable_slot_ids: [],
+          hand_back_slot_ids: [],
+          can_review: false,
+          can_reopen: false,
         },
       ],
       error: fixture.capabilitiesError ?? null,
@@ -173,7 +176,7 @@ describe("getBoard", () => {
     expect(directoryCalls).toEqual([])
   })
 
-  it("builds cards with allowedMoves from task_capabilities and nothing else", async () => {
+  it("builds cards with moves from task_capabilities and nothing else", async () => {
     const { rpc, directoryCalls } = mockBoard()
 
     const cards = await getBoard({ kind: "all" })
@@ -196,7 +199,8 @@ describe("getBoard", () => {
           { id: ME, name: "Sam Layout", initials: "SL" },
           { id: OTHER, name: "Olive Writer", initials: "OW" },
         ],
-        allowedMoves: ["to_do", "for_review"],
+        // can_review is false: allowed_moves alone, with no Done.
+        moves: ["to_do", "for_review"],
       },
       {
         id: T2,
@@ -210,9 +214,75 @@ describe("getBoard", () => {
         hasNeedsReassignment: false,
         assignees: [{ id: "gone", name: "Former member", initials: "FM" }],
         // No capabilities row: nothing to offer.
-        allowedMoves: [],
+        moves: [],
       },
     ])
+  })
+
+  it.each([
+    [
+      "the approver who also holds an On it slot",
+      ["to_do", "doing"],
+      ["to_do", "doing", "done"],
+    ],
+    ["the approver alone", [], ["done"]],
+  ] as const)(
+    "adds Done after allowed_moves when can_review is true, for %s",
+    async (_label, allowedMoves, moves) => {
+      mockBoard({
+        tasks: [{ ...TASKS[0], column: "for_review", revision_note_at: null }],
+        capabilities: [
+          {
+            task_id: T1,
+            allowed_moves: allowedMoves,
+            respondable_slot_ids: [],
+            hand_back_slot_ids: [],
+            can_review: true,
+            can_reopen: false,
+          },
+        ],
+      })
+
+      const [first] = await getBoard({ kind: "all" })
+
+      expect(first?.moves).toEqual(moves)
+    }
+  )
+
+  it("never offers Done without can_review, whatever the column", async () => {
+    mockBoard({
+      tasks: TASKS.map((task) => ({ ...task, column: "for_review" })),
+      capabilities: [
+        {
+          task_id: T1,
+          allowed_moves: ["to_do", "doing"],
+          respondable_slot_ids: [],
+          hand_back_slot_ids: [],
+          can_review: false,
+          can_reopen: false,
+        },
+        {
+          task_id: T2,
+          allowed_moves: [],
+          respondable_slot_ids: [],
+          hand_back_slot_ids: [],
+          can_review: false,
+          can_reopen: true,
+        },
+      ],
+    })
+
+    const cards = await getBoard({ kind: "all" })
+
+    expect(cards.map((card) => card.moves)).toEqual([["to_do", "doing"], []])
+  })
+
+  it("reads task_capabilities once for the whole Board", async () => {
+    const { rpc } = mockBoard()
+
+    await getBoard({ kind: "all" })
+
+    expect(rpc).toHaveBeenCalledOnce()
   })
 
   it.each([

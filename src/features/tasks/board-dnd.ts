@@ -1,6 +1,6 @@
 // The Board's drag-and-drop rules, kept pure so they can be tested with fake
 // rects. Which columns a card may go to is never decided here: every function
-// takes the card's `allowedMoves` (task_capabilities' answer, AD-4) as given.
+// takes the card's `moves` (task_capabilities' answer, AD-4) as given.
 
 import {
   pointerWithin,
