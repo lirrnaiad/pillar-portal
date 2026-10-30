@@ -102,6 +102,22 @@ describe("TaskPage", () => {
     }
   )
 
+  // RLS hides a deleted task from every caller, so getTaskDetail reads no
+  // row for it (queries.test.ts) and the page can't tell it from a bad link.
+  it("shows the same not-found for a deleted task", async () => {
+    getTaskDetail.mockResolvedValue(null)
+
+    await renderPage(TASK_ID)
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "This task was deleted or the link is wrong.",
+      })
+    ).toBeInTheDocument()
+    expect(TaskDetailView).not.toHaveBeenCalled()
+  })
+
   it("has no axe violations in the not-found state", async () => {
     getTaskDetail.mockResolvedValue(null)
 

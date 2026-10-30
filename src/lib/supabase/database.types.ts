@@ -391,6 +391,7 @@ export type Database = {
           column: Database["public"]["Enums"]["task_column"]
           created_at: string
           created_by: string | null
+          deleted_at: string | null
           description: string | null
           done_at: string | null
           due_at: string
@@ -408,6 +409,7 @@ export type Database = {
           column?: Database["public"]["Enums"]["task_column"]
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           description?: string | null
           done_at?: string | null
           due_at: string
@@ -425,6 +427,7 @@ export type Database = {
           column?: Database["public"]["Enums"]["task_column"]
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           description?: string | null
           done_at?: string | null
           due_at?: string
@@ -518,6 +521,10 @@ export type Database = {
         Returns: string
       }
       decline_member: { Args: { member_id: string }; Returns: undefined }
+      delete_task: {
+        Args: { expected_updated_at: string; task_id: string }
+        Returns: undefined
+      }
       end_job_run: {
         Args: {
           detail?: Json
@@ -584,6 +591,7 @@ export type Database = {
         Args: { ids: string[] }
         Returns: {
           allowed_moves: Database["public"]["Enums"]["task_column"][]
+          can_manage: boolean
           can_reopen: boolean
           can_review: boolean
           hand_back_slot_ids: string[]

@@ -287,23 +287,25 @@ select is(
 -- Locks. A slot command locks its slot, then the task, and only then asks
 -- its helper (one call), so a Mark done can't commit between the check and
 -- the write. A task command locks the task once and its own body never
--- mentions task_assignments (its helper may read it, never lock it).
+-- mentions task_assignments (its helper may read it, never lock it). Each
+-- task lock carries `t.deleted_at is null` (Story 3.2), so a deleted task is
+-- missing.
 
 select ok(
   pg_get_functiondef('public.respond_to_slot(uuid, public.slot_state, text)'::regprocedure)
-    ~* 'from\s+public\.task_assignments\s+a\s+where\s+a\.id\s*=\s*respond_to_slot\.slot_id\s+for\s+update\s*;.*for\s+update\s+of\s+t\s*;.*private\.can_respond_to_slot\('
+    ~* 'from\s+public\.task_assignments\s+a\s+where\s+a\.id\s*=\s*respond_to_slot\.slot_id\s+for\s+update\s*;.*and\s+t\.deleted_at\s+is\s+null\s+for\s+update\s+of\s+t\s*;.*private\.can_respond_to_slot\('
     and (select count(*) from regexp_matches(
            pg_get_functiondef('public.respond_to_slot(uuid, public.slot_state, text)'::regprocedure),
            'can_respond_to_slot\(', 'g')) = 1,
-  'public.respond_to_slot(...) locks the slot FOR UPDATE, then its task, before checking can_respond_to_slot'
+  'public.respond_to_slot(...) locks the slot FOR UPDATE, then its live task, before checking can_respond_to_slot'
 );
 select ok(
   pg_get_functiondef('public.hand_back_slot(uuid, text)'::regprocedure)
-    ~* 'from\s+public\.task_assignments\s+a\s+where\s+a\.id\s*=\s*hand_back_slot\.slot_id\s+for\s+update\s*;.*for\s+update\s+of\s+t\s*;.*private\.can_hand_back_slot\('
+    ~* 'from\s+public\.task_assignments\s+a\s+where\s+a\.id\s*=\s*hand_back_slot\.slot_id\s+for\s+update\s*;.*and\s+t\.deleted_at\s+is\s+null\s+for\s+update\s+of\s+t\s*;.*private\.can_hand_back_slot\('
     and (select count(*) from regexp_matches(
            pg_get_functiondef('public.hand_back_slot(uuid, text)'::regprocedure),
            'can_hand_back_slot\(', 'g')) = 1,
-  'public.hand_back_slot(...) locks the slot FOR UPDATE, then its task, before checking can_hand_back_slot'
+  'public.hand_back_slot(...) locks the slot FOR UPDATE, then its live task, before checking can_hand_back_slot'
 );
 
 create temp table task_commands (signature regprocedure primary key);
@@ -311,14 +313,15 @@ insert into task_commands values
   ('public.move_task(uuid, public.task_column)'),
   ('public.mark_done(uuid)'),
   ('public.send_back_task(uuid, text)'),
-  ('public.reopen_task(uuid)');
+  ('public.reopen_task(uuid)'),
+  ('public.delete_task(uuid, timestamp with time zone)');
 
 select is_empty(
   $$ select signature::text from task_commands
      where pg_get_functiondef(signature)
-             !~* 'from\s+public\.tasks\s+t\s+where\s+t\.id\s*=\s*\w+\.task_id\s+for\s+update\s*;'
+             !~* 'from\s+public\.tasks\s+t\s+where\s+t\.id\s*=\s*\w+\.task_id\s+and\s+t\.deleted_at\s+is\s+null\s+for\s+update\s*;'
         or (select count(*) from regexp_matches(pg_get_functiondef(signature), 'for\s+update', 'gi')) <> 1 $$,
-  'move_task, mark_done, send_back_task and reopen_task each lock the task FOR UPDATE, once'
+  'move_task, mark_done, send_back_task, reopen_task and delete_task each lock the live task FOR UPDATE, once'
 );
 select is_empty(
   $$ select signature::text from task_commands

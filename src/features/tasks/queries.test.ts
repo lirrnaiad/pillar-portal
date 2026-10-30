@@ -177,6 +177,7 @@ const TASK_ROW = {
   revision_note: null,
   revision_note_by: null,
   revision_note_at: null,
+  updated_at: "2026-10-30T02:15:42.123456+00:00",
   sections: null,
   desks: { name: "Layout" },
 }
@@ -228,6 +229,7 @@ function mockDetail({
       hand_back_slot_ids: [SLOT_B],
       can_review: false,
       can_reopen: false,
+      can_manage: false,
     },
   ] as unknown,
   members = [
@@ -291,7 +293,7 @@ describe("getTaskDetail", () => {
     const tasks = calls.find((c) => c.table === "tasks")!
     expect(tasks.calls).toContainEqual([
       "select",
-      "id, title, description, due_at, reference_url, column, revision_note, revision_note_by, revision_note_at, sections(name), desks(name)",
+      "id, title, description, due_at, reference_url, column, revision_note, revision_note_by, revision_note_at, updated_at, sections(name), desks(name)",
     ])
     expect(tasks.calls).toContainEqual(["eq", "id", TASK_ID])
     const slots = calls.find((c) => c.table === "task_assignments")!
@@ -370,6 +372,8 @@ describe("getTaskDetail", () => {
       handBackSlotIds: [SLOT_B],
       canReview: false,
       canReopen: false,
+      canManage: false,
+      updatedAt: "2026-10-30T02:15:42.123456+00:00",
       roleLabels: expect.objectContaining({ layout_artist: "Layout Artist" }),
     })
   })
@@ -446,6 +450,37 @@ describe("getTaskDetail", () => {
     }
   )
 
+  it.each([true, false])(
+    "passes task_capabilities' can_manage (%s) through",
+    async (canManage) => {
+      mockDetail({
+        capabilities: [
+          {
+            task_id: TASK_ID,
+            allowed_moves: [],
+            respondable_slot_ids: [],
+            hand_back_slot_ids: [],
+            can_review: false,
+            can_reopen: false,
+            can_manage: canManage,
+          },
+        ],
+      })
+
+      expect((await getTaskDetail(TASK_ID))?.canManage).toBe(canManage)
+    }
+  )
+
+  it("passes updated_at through as the same string, microseconds and all", async () => {
+    mockDetail({
+      task: { ...TASK_ROW, updated_at: "2026-10-30T02:15:42.000001+00:00" },
+    })
+
+    expect((await getTaskDetail(TASK_ID))?.updatedAt).toBe(
+      "2026-10-30T02:15:42.000001+00:00"
+    )
+  })
+
   it("names a section-owned task's section", async () => {
     mockDetail({
       task: { ...TASK_ROW, sections: { name: "News" }, desks: null },
@@ -464,6 +499,7 @@ describe("getTaskDetail", () => {
     expect(detail?.handBackSlotIds).toEqual([])
     expect(detail?.canReview).toBe(false)
     expect(detail?.canReopen).toBe(false)
+    expect(detail?.canManage).toBe(false)
   })
 
   it.each([

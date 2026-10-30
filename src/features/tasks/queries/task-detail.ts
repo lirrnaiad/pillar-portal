@@ -59,6 +59,17 @@ export type TaskDetail = {
    */
   canReview: boolean
   canReopen: boolean
+  /**
+   * Whether it may manage the task (Delete; Story 3.7 adds Edit): it is the
+   * task's approver. From task_capabilities.
+   */
+  canManage: boolean
+  /**
+   * The task's version, `updated_at` exactly as PostgREST returned it, which
+   * a confirmation passes back (AD-21). Never parsed: a `Date` would drop
+   * its microseconds.
+   */
+  updatedAt: string
   /** Resolved here for the same client-bundle reason as TaskFormOptions's (./task-form.ts). */
   roleLabels: Record<ProductionRole, string>
 }
@@ -82,7 +93,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     supabase
       .from("tasks")
       .select(
-        "id, title, description, due_at, reference_url, column, revision_note, revision_note_by, revision_note_at, sections(name), desks(name)"
+        "id, title, description, due_at, reference_url, column, revision_note, revision_note_by, revision_note_at, updated_at, sections(name), desks(name)"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -187,6 +198,8 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     handBackSlotIds: capabilities?.hand_back_slot_ids ?? [],
     canReview: capabilities?.can_review ?? false,
     canReopen: capabilities?.can_reopen ?? false,
+    canManage: capabilities?.can_manage ?? false,
+    updatedAt: task.updated_at,
     roleLabels: PRODUCTION_ROLE_LABELS,
   }
 }

@@ -13,6 +13,7 @@ const {
   slotRespondSchema,
   taskCreateSchema,
   taskMoveSchema,
+  taskDeleteSchema,
   taskReviewSchema,
   taskSendBackSchema,
 } = await import("./schemas")
@@ -295,6 +296,44 @@ describe("taskSendBackSchema", () => {
   it("refuses a task id that isn't a UUID", () => {
     expect(
       taskSendBackSchema.safeParse({ taskId: "abc", note: "Fix" }).success
+    ).toBe(false)
+  })
+})
+
+describe("taskDeleteSchema", () => {
+  it.each([
+    "2026-10-30T02:15:42.123456+00:00",
+    "2026-10-30T02:15:42+00:00",
+    "2026-10-30T10:15:42.1+08:00",
+    "2026-10-30T02:15:42.123456Z",
+  ])("keeps the version %j as the same string", (version) => {
+    expect(
+      taskDeleteSchema.parse({ taskId: TASK_ID, expectedUpdatedAt: version })
+    ).toEqual({ taskId: TASK_ID, expectedUpdatedAt: version })
+  })
+
+  it.each([
+    ["no version", undefined],
+    ["a null version", null],
+    ["a version without an offset", "2026-10-30T02:15:42.123456"],
+    ["a date only", "2026-10-30"],
+    ["a Postgres-style timestamp", "2026-10-30 02:15:42+00"],
+    ["text", "yesterday"],
+  ])("refuses %s", (_name, version) => {
+    expect(
+      taskDeleteSchema.safeParse({
+        taskId: TASK_ID,
+        expectedUpdatedAt: version,
+      }).success
+    ).toBe(false)
+  })
+
+  it("refuses a task id that isn't a UUID", () => {
+    expect(
+      taskDeleteSchema.safeParse({
+        taskId: "abc",
+        expectedUpdatedAt: "2026-10-30T02:15:42+00:00",
+      }).success
     ).toBe(false)
   })
 })

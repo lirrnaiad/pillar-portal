@@ -26,6 +26,7 @@ vi.mock("@/lib/env.client", () => ({
 
 import {
   createTaskAction,
+  deleteTaskAction,
   handBackSlotAction,
   markDoneAction,
   moveTaskAction,
@@ -445,6 +446,73 @@ describe("sendBackTaskAction", () => {
   })
 })
 
+describe("deleteTaskAction", () => {
+  // As PostgREST returns it, microseconds included.
+  const VERSION = "2026-10-30T02:15:42.123456+00:00"
+
+  it.each([
+    [
+      "a task id that isn't a UUID",
+      { taskId: "abc", expectedUpdatedAt: VERSION },
+    ],
+    ["no version", { taskId: TASK_ID }],
+    [
+      "a version that isn't a timestamp",
+      { taskId: TASK_ID, expectedUpdatedAt: "yesterday" },
+    ],
+    [
+      "a version without an offset",
+      { taskId: TASK_ID, expectedUpdatedAt: "2026-10-30T02:15:42.123456" },
+    ],
+  ])("rejects %s without calling the database", async (_name, input) => {
+    const result = await deleteTaskAction(input)
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it("passes the version to delete_task exactly as given, then revalidates the dashboard and the admin pages and returns the task id", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    const result = await deleteTaskAction({
+      taskId: TASK_ID,
+      expectedUpdatedAt: VERSION,
+    })
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("delete_task", {
+      task_id: TASK_ID,
+      expected_updated_at: VERSION,
+    })
+    expect(revalidatePath.mock.calls).toEqual([
+      ["/dashboard", "layout"],
+      ["/admin", "layout"],
+    ])
+    expect(result).toEqual({ ok: true, data: { taskId: TASK_ID } })
+  })
+
+  it.each([
+    ["auth.not_active", "auth.not_active"],
+    ["tasks.not_found", "tasks.not_found"],
+    ["tasks.not_approver", "tasks.not_approver"],
+    ["tasks.stale", "tasks.stale"],
+    ["tasks.not_allowed", "tasks.save_failed"],
+    ["fetch failed", "tasks.save_failed"],
+  ])(
+    "maps the database error %s to %s without revalidating",
+    async (message, code) => {
+      rpc.mockResolvedValue({ data: null, error: { message } })
+
+      const result = await deleteTaskAction({
+        taskId: TASK_ID,
+        expectedUpdatedAt: VERSION,
+      })
+
+      expect(result).toEqual({ ok: false, code })
+      expect(revalidatePath).not.toHaveBeenCalled()
+    }
+  )
+})
+
 describe("recording unexpected errors", () => {
   // A raw database error, as PostgREST returns it.
   const RAW = {
@@ -501,6 +569,15 @@ describe("recording unexpected errors", () => {
       "reopenTaskAction",
       () => reopenTaskAction({ taskId: TASK_ID }),
       { route: "action reopenTaskAction", entityType: "task", entityId: TASK_ID },
+    ],
+    [
+      "deleteTaskAction",
+      () =>
+        deleteTaskAction({
+          taskId: TASK_ID,
+          expectedUpdatedAt: "2026-10-30T02:15:42.123456+00:00",
+        }),
+      { route: "action deleteTaskAction", entityType: "task", entityId: TASK_ID },
     ],
   ])(
     "%s records an unexpected error after the response, with its action and entity",
@@ -584,6 +661,15 @@ describe("recording unexpected errors", () => {
       () => reopenTaskAction({ taskId: TASK_ID }),
       "tasks.not_found",
     ],
+    [
+      "deleteTaskAction",
+      () =>
+        deleteTaskAction({
+          taskId: TASK_ID,
+          expectedUpdatedAt: "2026-10-30T02:15:42.123456+00:00",
+        }),
+      "tasks.stale",
+    ],
   ])("%s doesn't record a known code (%s)", async (_name, call, message) => {
     rpc.mockResolvedValue({ data: null, error: { code: "P0001", message } })
 
@@ -622,6 +708,10 @@ describe("recording unexpected errors", () => {
       () => sendBackTaskAction({ taskId: TASK_ID, note: "  " }),
     ],
     ["reopenTaskAction", () => reopenTaskAction({ taskId: "abc" })],
+    [
+      "deleteTaskAction",
+      () => deleteTaskAction({ taskId: TASK_ID, expectedUpdatedAt: null }),
+    ],
   ])("%s doesn't record a parse failure", async (_name, call) => {
     await call()
 

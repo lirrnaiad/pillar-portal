@@ -75,3 +75,7 @@ authenticated private.can_reopen_task(uuid)
 authenticated public.mark_done(uuid)
 authenticated public.send_back_task(uuid, text)
 authenticated public.reopen_task(uuid)
+
+# tasks_delete: the approver's soft delete (its helpers and the recreated
+# task_capabilities keep the grants listed above)
+authenticated public.delete_task(uuid, timestamp with time zone)

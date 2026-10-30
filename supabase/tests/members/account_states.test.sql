@@ -1,8 +1,9 @@
 -- Account states (Story 2.1): declined and deactivated members are not
 -- active. They read nothing but their own `members` row, and every command
 -- raises `auth.not_active` for them, the approver's three included (Story
--- 3.1). This file also covers the new-user trigger (insert only), the
--- declined CHECK and the before_user_created Auth hook.
+-- 3.1), and delete_task (Story 3.2). This file also covers the new-user
+-- trigger (insert only), the declined CHECK and the before_user_created Auth
+-- hook.
 --
 -- The caller matrix is table-driven, as in members.test.sql: each row of
 -- `callers` is a caller, a DO block records what each one reads and what each
@@ -128,10 +129,13 @@ insert into callers values
 -- rows included), except `reasons`, which counts this test's fixture slots
 -- only, since who reads a seeded reason depends on the seed. "Every row"
 -- totals are read here as `postgres`; the directory total restates the
--- active predicate rather than calling the helper under test. Command
+-- active predicate rather than calling the helper under test, and the task
+-- totals restate the live-task one (Story 3.2), so they hold on a database
+-- that has deleted tasks. Command
 -- results are `ok` (accepted, then rolled back) or `<sqlstate> <message>`.
--- The approver's commands are accepted only from the active Head Layout
--- Artist; a move to Done is refused for everyone.
+-- The approver's commands (delete_task included, on the To Do task with its
+-- current version) are accepted only from the active Head Layout Artist; a
+-- move to Done is refused for everyone.
 create temp table expected as
 with t as (
   select
@@ -140,10 +144,19 @@ with t as (
     ((select count(*) from public.sections)
       + (select count(*) from public.desks)
       + (select count(*) from public.positions))::int as org,
-    (select count(*) from public.tasks)::int as tasks,
-    (select count(*) from public.task_assignments)::int as slots,
-    (select count(*) from public.activity
-     where entity_type in ('task', 'task_assignment'))::int as activity,
+    (select count(*) from public.tasks where deleted_at is null)::int as tasks,
+    (select count(*) from public.task_assignments a
+     join public.tasks k on k.id = a.task_id
+     where k.deleted_at is null)::int as slots,
+    (select count(*) from public.activity v
+     where (v.entity_type = 'task' and exists (
+              select 1 from public.tasks k
+              where k.id = v.entity_id and k.deleted_at is null))
+        or (v.entity_type = 'task_assignment' and exists (
+              select 1 from public.task_assignments a
+              join public.tasks k on k.id = a.task_id
+              where a.id = v.entity_id and k.deleted_at is null)))::int
+      as activity,
     (select count(*) from public.members m
      where m.role <> 'pending'
        and m.declined_at is null
@@ -158,27 +171,31 @@ cross join lateral (values
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active', 'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active'),
   ('declined',
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active', 'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active'),
   ('deactivated former Head Layout Artist',
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active', 'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active'),
   ('active staff',
    1, 1, t.org, t.tasks, t.slots, t.activity, 0, t.directory, 2, 1, 2,
    true, false, false, true,
    'P0001 tasks.not_admin', 'ok', 'ok', 'ok',
    'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
-   'P0001 tasks.not_approver', 'P0001 tasks.not_allowed'),
+   'P0001 tasks.not_approver', 'P0001 tasks.not_allowed',
+   'P0001 tasks.not_approver'),
   ('active admin (Sports Editor)',
    t.members, t.positions_held, t.org, t.tasks, t.slots, t.activity, 0,
    t.directory, 0, 1, 0,
@@ -186,21 +203,24 @@ cross join lateral (values
    'ok', 'P0001 tasks.not_allowed', 'P0001 tasks.not_allowed',
    'P0001 tasks.not_allowed',
    'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
-   'P0001 tasks.not_approver', 'P0001 tasks.not_allowed'),
+   'P0001 tasks.not_approver', 'P0001 tasks.not_allowed',
+   'P0001 tasks.not_approver'),
   ('active Head Layout Artist',
    t.members, t.positions_held, t.org, t.tasks, t.slots, t.activity, 1,
    t.directory, 0, 1, 0,
    true, true, true, true,
    'ok', 'P0001 tasks.not_allowed', 'P0001 tasks.not_allowed',
    'P0001 tasks.not_allowed',
-   'ok', 'ok', 'ok', 'P0001 tasks.not_allowed')
+   'ok', 'ok', 'ok', 'P0001 tasks.not_allowed',
+   'ok')
 ) as e(
   label,
   members, member_positions, org, tasks, task_assignments, activity, reasons,
   directory, my_open_slots, capabilities, open_slots,
   is_active, is_admin, is_approver, can_join,
   create_task, respond_to_slot, move_task, hand_back_slot,
-  mark_done, send_back_task, reopen_task, move_task_done
+  mark_done, send_back_task, reopen_task, move_task_done,
+  delete_task
 );
 
 create temp table observed (like expected);
@@ -214,10 +234,13 @@ declare
   v_review_task constant uuid := '00000000-0000-4000-e100-000000000002';
   v_done_task constant uuid := '00000000-0000-4000-e100-000000000003';
   v_staff constant uuid := '00000000-0000-4000-e000-000000000004';
+  v_task_version timestamptz;
 begin
   -- Read the fixtures while still `postgres`: `authenticated` can't read
-  -- temp tables.
+  -- temp tables, and a non-active caller can't read the task's version.
   select array_agg(x) into v_callers from callers x;
+  select t.updated_at into v_task_version
+  from public.tasks t where t.id = v_task;
 
   foreach c in array v_callers loop
     perform set_config(
@@ -324,6 +347,14 @@ begin
     exception when others then
       o.move_task_done := case when sqlerrm = 'probe.accepted' then 'ok'
                                else sqlstate || ' ' || sqlerrm end;
+    end;
+
+    begin
+      perform public.delete_task(v_task, v_task_version);
+      raise exception using errcode = 'P0001', message = 'probe.accepted';
+    exception when others then
+      o.delete_task := case when sqlerrm = 'probe.accepted' then 'ok'
+                            else sqlstate || ' ' || sqlerrm end;
     end;
 
     set local role postgres;

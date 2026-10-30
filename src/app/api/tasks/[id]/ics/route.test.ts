@@ -122,6 +122,17 @@ describe("GET /api/tasks/[id]/ics", () => {
     expect(new Set(bodies).size).toBe(1)
   })
 
+  // RLS hides a deleted task from every caller: the read returns no row.
+  it("answers 404 for a deleted task, recording nothing", async () => {
+    setup({ data: null, error: null })
+
+    const res = await call()
+
+    expect(res.status).toBe(404)
+    expect(res.headers.get("cache-control")).toBe("private, no-store")
+    expect(after).not.toHaveBeenCalled()
+  })
+
   it("records a thrown read after the response, and nothing for the other misses", async () => {
     setup({ data: ROW, error: null }, { data: null, error: null })
     await call()

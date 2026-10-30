@@ -307,8 +307,10 @@ select throws_ok(
 );
 
 -- RLS: active members (staff and admin) read every row of tasks,
--- task_assignments and task-type activity; a pending caller reads none;
--- nobody writes any of the three directly.
+-- task_assignments and task-type activity but a deleted task's (Story 3.2;
+-- the totals below restate that predicate, so they hold on a database that
+-- has deleted tasks); a pending caller reads none; nobody writes any of the
+-- three directly.
 --
 -- pgTAP's assertion functions must be invoked with a top-level `select` (the
 -- harness captures the query's result row as the TAP line); calling them
@@ -433,18 +435,22 @@ select is(
 );
 select is(
   (select staff_tasks from rls_observed),
-  (select count(*)::int from public.tasks),
-  'an active staff member reads every task'
+  (select count(*)::int from public.tasks where deleted_at is null),
+  'an active staff member reads every live task'
 );
 select is(
   (select staff_assignments from rls_observed),
-  (select count(*)::int from public.task_assignments),
-  'an active staff member reads every task_assignment'
+  (select count(*)::int from public.task_assignments a
+   join public.tasks t on t.id = a.task_id
+   where t.deleted_at is null),
+  'an active staff member reads every live task''s task_assignments'
 );
 select is(
   (select staff_activity from rls_observed),
-  (select count(*)::int from public.activity where entity_type = 'task'),
-  'an active staff member reads every task-type activity row'
+  (select count(*)::int from public.activity v
+   join public.tasks t on t.id = v.entity_id
+   where v.entity_type = 'task' and t.deleted_at is null),
+  'an active staff member reads every live task''s task-type activity row'
 );
 select ok(
   (select insert_denied from rls_observed),
