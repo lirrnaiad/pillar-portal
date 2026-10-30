@@ -15,14 +15,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { TaskDetail } from "../queries/task-detail"
 import { TaskDetailView } from "./task-detail-view"
 
-const { handBackSlotAction, markDoneAction, reopenTaskAction } = vi.hoisted(
-  () => ({
-    handBackSlotAction: vi.fn(),
-    markDoneAction: vi.fn(),
-    reopenTaskAction: vi.fn(),
-  })
-)
+const {
+  deleteTaskAction,
+  handBackSlotAction,
+  markDoneAction,
+  refresh,
+  reopenTaskAction,
+  replace,
+} = vi.hoisted(() => ({
+  deleteTaskAction: vi.fn(),
+  handBackSlotAction: vi.fn(),
+  markDoneAction: vi.fn(),
+  refresh: vi.fn(),
+  reopenTaskAction: vi.fn(),
+  replace: vi.fn(),
+}))
 vi.mock("../actions", () => ({
+  deleteTaskAction,
   handBackSlotAction,
   markDoneAction,
   moveTaskAction: vi.fn(),
@@ -30,7 +39,9 @@ vi.mock("../actions", () => ({
   respondToSlotAction: vi.fn(),
   sendBackTaskAction: vi.fn(),
 }))
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh, replace }),
+}))
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
@@ -103,6 +114,8 @@ const TASK: TaskDetail = {
   handBackSlotIds: [],
   canReview: false,
   canReopen: false,
+  canManage: false,
+  updatedAt: "2026-10-30T02:15:42.123456+00:00",
   roleLabels: {
     writer: "Writer",
     layout_artist: "Layout Artist",
@@ -459,6 +472,76 @@ describe("TaskDetailView", () => {
     expect(reopenTaskAction).toHaveBeenCalledWith({ taskId: TASK.id })
   })
 
+  // TaskManage's focus target and the status element share one id too.
+  it("puts focus on the status when a refresh after a refused Delete takes the row away", async () => {
+    const user = userEvent.setup()
+    deleteTaskAction.mockResolvedValue({
+      ok: false,
+      code: "tasks.not_approver",
+    })
+    const { rerender } = render(
+      <TaskDetailView task={{ ...TASK, canManage: true }} />
+    )
+
+    await user.click(screen.getByRole("button", { name: "Delete" }))
+    await user.click(screen.getByRole("button", { name: "Delete" }))
+    await waitFor(() => expect(refresh).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Delete" })).toHaveFocus()
+    )
+
+    // The refresh shows the caller is no longer the approver.
+    rerender(<TaskDetailView task={{ ...TASK, canManage: false }} />)
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull()
+    expect(document.getElementById("task-status")).toHaveFocus()
+  })
+
+  it("offers Delete only when canManage, in its own row after the review buttons", () => {
+    const { rerender } = render(<TaskDetailView task={TASK} />)
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull()
+
+    rerender(
+      <TaskDetailView
+        task={{
+          ...TASK,
+          column: "for_review",
+          canReview: true,
+          canManage: true,
+        }}
+      />
+    )
+    const markDone = screen.getByRole("button", { name: "Mark done" })
+    const remove = screen.getByRole("button", { name: "Delete" })
+    expect(
+      markDone.compareDocumentPosition(remove) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(markDone.parentElement?.parentElement).not.toBe(
+      remove.parentElement?.parentElement
+    )
+  })
+
+  it("deletes with the task's id and its version as read, then goes to /admin/tasks", async () => {
+    const user = userEvent.setup()
+    deleteTaskAction.mockResolvedValue({ ok: true, data: { taskId: TASK.id } })
+    render(<TaskDetailView task={{ ...TASK, canManage: true }} />)
+
+    await user.click(screen.getByRole("button", { name: "Delete" }))
+    expect(screen.getByRole("alertdialog")).toHaveAccessibleName(
+      'Delete "Lay out the spread"?'
+    )
+    await user.click(screen.getByRole("button", { name: "Delete" }))
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith("/admin/tasks?notice=task-deleted")
+    )
+    expect(deleteTaskAction).toHaveBeenCalledExactlyOnceWith({
+      taskId: TASK.id,
+      expectedUpdatedAt: "2026-10-30T02:15:42.123456+00:00",
+    })
+  })
+
   it("omits the reference link row and the description when they're empty", () => {
     render(
       <TaskDetailView
@@ -484,13 +567,14 @@ describe("TaskDetailView", () => {
     expect(await axeViolations(container)).toEqual([])
   })
 
-  it("has no axe violations with a revision note and the review buttons", async () => {
+  it("has no axe violations with a revision note, the review buttons and Delete", async () => {
     const { container } = render(
       <TaskDetailView
         task={{
           ...TASK,
           column: "for_review",
           canReview: true,
+          canManage: true,
           revisionNote: {
             text: "Fix the captions.",
             byName: "Head Layout Artist",

@@ -2,6 +2,7 @@
 // from here only.
 export {
   createTaskAction,
+  deleteTaskAction,
   handBackSlotAction,
   markDoneAction,
   moveTaskAction,
@@ -11,6 +12,7 @@ export {
 } from "./actions"
 export type {
   CreateTaskState,
+  DeleteTaskState,
   HandBackSlotState,
   MarkDoneState,
   MoveTaskState,
@@ -93,6 +95,7 @@ export {
   slotHandBackSchema,
   slotRespondSchema,
   taskCreateSchema,
+  taskDeleteSchema,
   taskMoveSchema,
   taskReviewSchema,
   taskSendBackSchema,
@@ -101,6 +104,7 @@ export type {
   SlotHandBackInput,
   SlotRespondInput,
   TaskCreateInput,
+  TaskDeleteInput,
   TaskMoveInput,
   TaskReviewInput,
   TaskSendBackInput,

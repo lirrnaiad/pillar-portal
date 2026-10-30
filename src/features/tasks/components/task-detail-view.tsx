@@ -12,6 +12,7 @@ import { CopyForMessenger } from "./copy-for-messenger"
 import { HandBack } from "./hand-back"
 import { SlotResponse } from "./slot-response"
 import { TaskColumnControl } from "./task-column-control"
+import { TaskManage } from "./task-manage"
 import { TaskReview } from "./task-review"
 import { TASK_STATUS_ID } from "./task-status-id"
 
@@ -23,9 +24,9 @@ const NOTE_DATE_FORMAT = "EEE, MMM d, yyyy"
  * note under it while the task stands sent back), owner, due date in PHT,
  * reference link, description, then one row per slot. Which actions appear
  * comes only from `task.allowedMoves`, `task.respondableSlotIds`,
- * `task.handBackSlotIds`, `task.canReview` and `task.canReopen`
- * (task_capabilities, AD-4); nothing here looks at roles, positions or who
- * holds a slot.
+ * `task.handBackSlotIds`, `task.canReview`, `task.canReopen` and
+ * `task.canManage` (task_capabilities, AD-4); nothing here looks at roles,
+ * positions or who holds a slot.
  */
 export function TaskDetailView({ task }: { task: TaskDetail }) {
   const respondable = new Set(task.respondableSlotIds)
@@ -89,6 +90,14 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
         taskId={task.id}
         canReview={task.canReview}
         canReopen={task.canReopen}
+        focusTargetId={TASK_STATUS_ID}
+      />
+
+      <TaskManage
+        taskId={task.id}
+        taskTitle={task.title}
+        expectedUpdatedAt={task.updatedAt}
+        canManage={task.canManage}
         focusTargetId={TASK_STATUS_ID}
       />
 

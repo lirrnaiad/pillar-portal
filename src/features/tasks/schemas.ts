@@ -144,8 +144,20 @@ export const taskSendBackSchema = z.object({
     .max(REVISION_NOTE_MAX),
 })
 
+/**
+ * Delete: the task and the version (`updated_at`) its confirmation was
+ * rendered from (AD-21). The version stays the string PostgREST returned,
+ * microseconds and all: a `Date` would drop them, and delete_task would then
+ * call every delete stale.
+ */
+export const taskDeleteSchema = z.object({
+  taskId: z.uuid(),
+  expectedUpdatedAt: z.iso.datetime({ offset: true }),
+})
+
 export type SlotRespondInput = z.input<typeof slotRespondSchema>
 export type SlotHandBackInput = z.input<typeof slotHandBackSchema>
 export type TaskMoveInput = z.input<typeof taskMoveSchema>
 export type TaskReviewInput = z.input<typeof taskReviewSchema>
 export type TaskSendBackInput = z.input<typeof taskSendBackSchema>
+export type TaskDeleteInput = z.input<typeof taskDeleteSchema>

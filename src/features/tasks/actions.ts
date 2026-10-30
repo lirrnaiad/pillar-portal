@@ -16,6 +16,7 @@ import {
   slotHandBackSchema,
   slotRespondSchema,
   taskCreateSchema,
+  taskDeleteSchema,
   taskMoveSchema,
   taskReviewSchema,
   taskSendBackSchema,
@@ -49,6 +50,10 @@ export type ReopenTaskState =
   | { ok: true; data: { column: "doing" } }
   | ActionError
 
+export type DeleteTaskState =
+  | { ok: true; data: { taskId: string } }
+  | ActionError
+
 // The codes each command raises as `raise exception ... message = '<code>'`
 // and the UI has copy for. Any other message — a code the UI never expects
 // (create_task's tasks.no_slots and tasks.invalid_slot_member backstops), a
@@ -65,9 +70,9 @@ const COMMAND_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
   "tasks.not_allowed",
 ])
 
-// The approver's commands. send_back_task's tasks.invalid_note backstop
-// (taskSendBackSchema already refuses a blank or long note) isn't here, so
-// it maps to tasks.save_failed and is recorded.
+// The approver's commands, delete_task included. send_back_task's
+// tasks.invalid_note backstop (taskSendBackSchema already refuses a blank or
+// long note) isn't here, so it maps to tasks.save_failed and is recorded.
 const REVIEW_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
   "auth.not_active",
   "tasks.not_found",
@@ -361,4 +366,42 @@ export async function reopenTaskAction(
   // same tasks.
   revalidatePath("/admin", "layout")
   return { ok: true, data: { column: "doing" } }
+}
+
+/**
+ * Deletes a task, softly (AD-3, AD-4), passing the `updated_at` the
+ * confirmation was rendered from (AD-21) exactly as PostgREST returned it.
+ * delete_task decides whether the caller is the approver and the task is
+ * unchanged; this only parses, calls it, maps the error and revalidates.
+ */
+export async function deleteTaskAction(
+  input: unknown
+): Promise<DeleteTaskState> {
+  const parsed = taskDeleteSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { taskId, expectedUpdatedAt } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("delete_task", {
+    task_id: taskId,
+    expected_updated_at: expectedUpdatedAt,
+  })
+
+  if (error) {
+    return {
+      ok: false,
+      code: mapError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
+        route: "action deleteTaskAction",
+        entityType: "task",
+        entityId: taskId,
+      }),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  // The review queue and Admin home's count.
+  revalidatePath("/admin", "layout")
+  return { ok: true, data: { taskId } }
 }

@@ -1,28 +1,36 @@
+import { Suspense } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { requireAdmin, AdminShell, AdminBannerSlot, RedirectError } = vi.hoisted(
-  () => {
-    // Like Next's redirect(), which requireAdmin calls, the mock throws.
-    class RedirectError extends Error {
-      constructor(readonly url: string) {
-        super(`NEXT_REDIRECT ${url}`)
-      }
-    }
-    return {
-      requireAdmin: vi.fn(),
-      AdminShell: vi.fn(() => null),
-      AdminBannerSlot: vi.fn(() => null),
-      RedirectError,
+const {
+  requireAdmin,
+  AdminShell,
+  AdminBannerSlot,
+  NoticeToast,
+  RedirectError,
+} = vi.hoisted(() => {
+  // Like Next's redirect(), which requireAdmin calls, the mock throws.
+  class RedirectError extends Error {
+    constructor(readonly url: string) {
+      super(`NEXT_REDIRECT ${url}`)
     }
   }
-)
+  return {
+    requireAdmin: vi.fn(),
+    AdminShell: vi.fn(() => null),
+    AdminBannerSlot: vi.fn(() => null),
+    NoticeToast: vi.fn(() => null),
+    RedirectError,
+  }
+})
 
 // require-admin.test.ts covers who requireAdmin redirects, and where.
 vi.mock("./require-admin", () => ({ requireAdmin }))
 vi.mock("./admin-shell", () => ({ AdminShell }))
 vi.mock("./admin-banners", () => ({ AdminBannerSlot }))
+// notice-toast.test.tsx covers what it shows.
+vi.mock("../notice-toast", () => ({ NoticeToast }))
 
 import type { CurrentMember } from "@/features/members"
 
@@ -54,7 +62,7 @@ describe("AdminLayout", () => {
     }
   )
 
-  it("renders the admin shell with the banner slot for an active editorial_admin member", async () => {
+  it("renders the admin shell with the banner slot for an active editorial_admin member, with the notice-toast reader mounted before the page", async () => {
     requireAdmin.mockResolvedValue(MEMBER)
 
     const element = await AdminLayout({ children: "page" })
@@ -63,7 +71,16 @@ describe("AdminLayout", () => {
     expect(element.props).toEqual({
       member: MEMBER,
       banners: expect.objectContaining({ type: AdminBannerSlot, props: {} }),
-      children: "page",
+      children: [
+        expect.objectContaining({
+          type: Suspense,
+          props: expect.objectContaining({
+            fallback: null,
+            children: expect.objectContaining({ type: NoticeToast }),
+          }),
+        }),
+        "page",
+      ],
     })
     // The slot reads its sources only when React renders it, after the check.
     expect(AdminBannerSlot).not.toHaveBeenCalled()

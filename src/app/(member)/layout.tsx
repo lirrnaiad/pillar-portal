@@ -3,7 +3,7 @@ import { Suspense } from "react"
 import { requireActiveMember } from "@/features/members"
 
 import { MemberShell } from "./member-shell"
-import { NoticeToast } from "./notice-toast"
+import { NoticeToast } from "../notice-toast"
 
 // Member routes need an active member: requireActiveMember sends anyone else
 // (signed out, pending, declined, deactivated) to /login. Each page makes the
