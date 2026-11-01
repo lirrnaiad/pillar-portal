@@ -522,6 +522,21 @@ describe("TaskDetailView", () => {
     )
   })
 
+  it("offers Edit before Delete, both only when canManage", () => {
+    const { rerender } = render(<TaskDetailView task={TASK} />)
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull()
+
+    rerender(<TaskDetailView task={{ ...TASK, canManage: true }} />)
+
+    const edit = screen.getByRole("link", { name: "Edit" })
+    expect(edit).toHaveAttribute("href", `/admin/tasks/${TASK.id}/edit`)
+    expect(
+      edit.compareDocumentPosition(
+        screen.getByRole("button", { name: "Delete" })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
   it("deletes with the task's id and its version as read, then goes to /admin/tasks", async () => {
     const user = userEvent.setup()
     deleteTaskAction.mockResolvedValue({ ok: true, data: { taskId: TASK.id } })

@@ -102,6 +102,34 @@ describe("TaskManage", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull()
   })
 
+  it("offers Edit, an outline link to the task's edit page, before Delete", () => {
+    render(<Page />)
+
+    const edit = screen.getByRole("link", { name: "Edit" })
+    expect(edit).toHaveAttribute("href", `/admin/tasks/${TASK_ID}/edit`)
+    expect(edit).toHaveAttribute("data-variant", "outline")
+    expect(edit).toHaveClass("min-h-11")
+    expect(
+      edit.compareDocumentPosition(trigger()) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it("offers no Edit without canManage", () => {
+    render(<Page canManage={false} />)
+
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull()
+  })
+
+  it("moves focus to the status if a refresh takes Edit away while it has focus", () => {
+    const { rerender } = render(<Page />)
+    screen.getByRole("link", { name: "Edit" }).focus()
+
+    rerender(<Page canManage={false} />)
+
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull()
+    expect(status()).toHaveFocus()
+  })
+
   it("asks first, naming the task, with Cancel focused", async () => {
     const user = userEvent.setup()
     render(<Page />)
