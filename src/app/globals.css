@@ -84,6 +84,11 @@
   /* The single card shadow */
   --shadow-card:
     0 1px 2px rgba(16, 16, 16, 0.06), 0 1px 1px rgba(16, 16, 16, 0.03);
+
+  /* DESIGN.md components.task-card.avatar-handed-back-opacity: a task card's
+     avatar for a member who handed back every slot they hold on the task.
+     Dimmed, never hidden; the sr-only names mark them "(handed back)". */
+  --avatar-handed-back-opacity: 0.4;
 }
 
 @theme inline {

@@ -261,9 +261,20 @@ describe("getPlanner", () => {
         hasAwaitingResponse: true,
         hasNeedsReassignment: true,
         assignees: [
-          { id: ME, name: "Sam Layout", initials: "SL" },
-          { id: OTHER, name: "Olive Writer", initials: "OW" },
-          { id: "gone", name: "Former member", initials: "FM" },
+          { id: ME, name: "Sam Layout", initials: "SL", handedBack: false },
+          {
+            id: OTHER,
+            name: "Olive Writer",
+            initials: "OW",
+            handedBack: false,
+          },
+          // Their only slot is handed back.
+          {
+            id: "gone",
+            name: "Former member",
+            initials: "FM",
+            handedBack: true,
+          },
         ],
       },
     ])

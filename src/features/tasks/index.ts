@@ -48,6 +48,7 @@ export type { CalendarEvent, CalendarTask } from "./calendar"
 export { BoardOwnerFilter } from "./components/board-owner-filter"
 export { AddToCalendarMenu, TaskCardMenu } from "./components/calendar-menu"
 export { CopyForMessenger } from "./components/copy-for-messenger"
+export { HandedBackQueue } from "./components/handed-back-queue"
 export { PlannerChip } from "./components/planner-chip"
 export { PlannerDayList } from "./components/planner-day-list"
 export { PlannerGrid } from "./components/planner-grid"
@@ -74,6 +75,12 @@ export type { PlannerChipStatusKind, PlannerScope } from "./planner"
 export { getBoard, getBoardOwners } from "./queries/board"
 export type { BoardCard } from "./queries/board"
 export { getTaskForCalendar } from "./queries/calendar"
+export {
+  countHandedBackForViewer,
+  getHandedBackForViewer,
+  getHandedBackQueue,
+} from "./queries/handed-back"
+export type { HandedBackSlot } from "./queries/handed-back"
 export { getPlanner } from "./queries/planner"
 export { getReassignOptions } from "./queries/reassign"
 export type { ReassignOptions } from "./queries/reassign"

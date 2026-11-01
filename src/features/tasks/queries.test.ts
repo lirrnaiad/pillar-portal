@@ -16,6 +16,7 @@ vi.mock("@/lib/env.client", () => ({
 vi.mock("@/features/members/actions", () => ({}))
 
 import { getTaskForCalendar } from "./queries/calendar"
+import { toTaskCard } from "./queries/shared"
 import { getTaskDetail } from "./queries/task-detail"
 import { getTaskFormOptions } from "./queries/task-form"
 import { getWhatsMine } from "./queries/whats-mine"
@@ -426,7 +427,7 @@ describe("getTaskDetail", () => {
     ])
   })
 
-  it("names a revision note's author who left the directory \"Former member\"", async () => {
+  it('names a revision note\'s author who left the directory "Former member"', async () => {
     mockDetail({
       task: {
         ...TASK_ROW,
@@ -682,9 +683,24 @@ describe("getWhatsMine", () => {
       if (name === "task_capabilities") {
         return Promise.resolve({
           data: fixture.capabilities ?? [
-            { task_id: T1, allowed_moves: [], respondable_slot_ids: [S1], hand_back_slot_ids: [] },
-            { task_id: T2, allowed_moves: ["to_do"], respondable_slot_ids: [], hand_back_slot_ids: [] },
-            { task_id: T3, allowed_moves: [], respondable_slot_ids: [S4], hand_back_slot_ids: [] },
+            {
+              task_id: T1,
+              allowed_moves: [],
+              respondable_slot_ids: [S1],
+              hand_back_slot_ids: [],
+            },
+            {
+              task_id: T2,
+              allowed_moves: ["to_do"],
+              respondable_slot_ids: [],
+              hand_back_slot_ids: [],
+            },
+            {
+              task_id: T3,
+              allowed_moves: [],
+              respondable_slot_ids: [S4],
+              hand_back_slot_ids: [],
+            },
           ],
           error: fixture.capabilitiesError ?? null,
         })
@@ -830,8 +846,9 @@ describe("getWhatsMine", () => {
     expect(t1.hasAwaitingResponse).toBe(true)
     expect(t1.hasNeedsReassignment).toBe(true)
     expect(t1.assignees).toEqual([
-      { id: ME, name: "Sam Layout", initials: "SL" },
-      { id: OTHER, name: "Olive Writer", initials: "OW" },
+      { id: ME, name: "Sam Layout", initials: "SL", handedBack: false },
+      // Their only slot on T1 is handed back.
+      { id: OTHER, name: "Olive Writer", initials: "OW", handedBack: true },
     ])
     const t3 = waiting.find((item) => item.task.id === T3)!.task
     expect(t3.hasNeedsReassignment).toBe(false)
@@ -847,7 +864,7 @@ describe("getWhatsMine", () => {
 
     expect(tasks[0].ownerName).toBe("News")
     expect(tasks[0].assignees).toEqual([
-      { id: ME, name: "Former member", initials: "FM" },
+      { id: ME, name: "Former member", initials: "FM", handedBack: false },
     ])
   })
 
@@ -947,4 +964,101 @@ describe("getTaskForCalendar", () => {
     client({ data: null, error: { message: "x" } })
     expect(await getTaskForCalendar(ID)).toBeNull()
   })
+})
+
+describe("toTaskCard", () => {
+  const ANN = "00000000-0000-4000-8000-0000000000d1"
+  const BEN = "00000000-0000-4000-8000-0000000000d2"
+  const CAL = "00000000-0000-4000-8000-0000000000d3"
+  const NAMES = new Map([
+    [ANN, "Ann Able"],
+    [BEN, "Ben Baker"],
+    [CAL, "Cal Cruz"],
+  ])
+  const NOW = new Date("2026-10-15T00:00:00Z")
+
+  const task = (column: "to_do" | "doing" | "for_review" | "done") => ({
+    id: "00000000-0000-4000-8000-0000000000e1",
+    title: "Lay out the spread",
+    due_at: "2099-01-01T00:00:00+00:00",
+    column,
+    revision_note_at: null,
+    sections: null,
+    desks: { name: "Layout" },
+  })
+
+  type State = "awaiting_response" | "on_it" | "needs_reassignment"
+  const slot = (member_id: string, state: State) => ({ member_id, state })
+  const marks = (
+    slots: { member_id: string; state: State }[],
+    column: "to_do" | "doing" | "for_review" | "done" = "doing"
+  ) =>
+    toTaskCard(task(column), slots, NAMES, NOW).assignees.map((a) => [
+      a.name,
+      a.handedBack,
+    ])
+
+  it("marks a member whose only slot is handed back", () => {
+    expect(marks([slot(ANN, "needs_reassignment")])).toEqual([
+      ["Ann Able", true],
+    ])
+  })
+
+  it("marks a member whose every slot is handed back", () => {
+    expect(
+      marks([slot(ANN, "needs_reassignment"), slot(ANN, "needs_reassignment")])
+    ).toEqual([["Ann Able", true]])
+  })
+
+  it.each([
+    ["On it, then handed back", ["on_it", "needs_reassignment"]],
+    ["handed back, then On it", ["needs_reassignment", "on_it"]],
+    [
+      "handed back, then Awaiting response",
+      ["needs_reassignment", "awaiting_response"],
+    ],
+  ] as const)(
+    "doesn't mark a member with a slot in another state (%s)",
+    (_label, states) => {
+      expect(marks(states.map((state) => slot(ANN, state)))).toEqual([
+        ["Ann Able", false],
+      ])
+    }
+  )
+
+  it.each(["awaiting_response", "on_it"] as const)(
+    "doesn't mark a member whose only slot is %s",
+    (state) => {
+      expect(marks([slot(ANN, state)])).toEqual([["Ann Able", false]])
+    }
+  )
+
+  it("judges each distinct member on their own slots, once each, in first-slot order", () => {
+    expect(
+      marks([
+        slot(BEN, "needs_reassignment"),
+        slot(ANN, "on_it"),
+        slot(CAL, "needs_reassignment"),
+        slot(ANN, "needs_reassignment"),
+        slot(BEN, "needs_reassignment"),
+        slot(CAL, "on_it"),
+      ])
+    ).toEqual([
+      ["Ben Baker", true],
+      ["Ann Able", false],
+      ["Cal Cruz", false],
+    ])
+  })
+
+  it.each(["to_do", "doing", "for_review", "done"] as const)(
+    "applies the same rule in %s",
+    (column) => {
+      expect(
+        marks([slot(ANN, "needs_reassignment"), slot(BEN, "on_it")], column)
+      ).toEqual([
+        ["Ann Able", true],
+        ["Ben Baker", false],
+      ])
+    }
+  )
 })

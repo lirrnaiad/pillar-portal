@@ -41,6 +41,11 @@ export type TaskCardAssignee = {
   id: string
   name: string
   initials: string
+  /**
+   * Every slot they hold on the task is Needs reassignment: they handed it
+   * all back, and the card dims their avatar.
+   */
+  handedBack: boolean
 }
 
 /** Everything a task card shows, computed on the server. */
@@ -60,7 +65,10 @@ export type TaskCardData = {
   /** Any slot on the task, anyone's, is in that state. */
   hasAwaitingResponse: boolean
   hasNeedsReassignment: boolean
-  /** Distinct slot members in slot order. */
+  /**
+   * Distinct slot members in slot order, each marked when they handed back
+   * every slot they hold on the task.
+   */
   assignees: TaskCardAssignee[]
 }
 
@@ -90,14 +98,25 @@ export function toTaskCard(
   nameById: Map<string, string>,
   now: Date
 ): TaskCardData {
-  const seen = new Set<string>()
-  const assignees: TaskCardAssignee[] = []
+  // Each member's entry, in the order of their first slot; any slot of theirs
+  // in another state clears handedBack.
+  const byMember = new Map<string, TaskCardAssignee>()
   for (const slot of slots) {
-    if (seen.has(slot.member_id)) continue
-    seen.add(slot.member_id)
+    const handedBack = slot.state === "needs_reassignment"
+    const seen = byMember.get(slot.member_id)
+    if (seen !== undefined) {
+      seen.handedBack &&= handedBack
+      continue
+    }
     const name = nameById.get(slot.member_id) ?? FORMER_MEMBER
-    assignees.push({ id: slot.member_id, name, initials: initialsOf(name) })
+    byMember.set(slot.member_id, {
+      id: slot.member_id,
+      name,
+      initials: initialsOf(name),
+      handedBack,
+    })
   }
+  const assignees = [...byMember.values()]
   return {
     id: task.id,
     title: task.title,
