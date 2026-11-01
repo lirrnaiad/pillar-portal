@@ -191,6 +191,10 @@ create temp table sections_before as select * from public.sections;
 create temp table desks_before as select * from public.desks;
 create temp table positions_before as select * from public.positions;
 
+-- A task the Opinion section owns (staging keeps one from a manual check)
+-- would block deleting the section. Deleting the tasks takes their slots
+-- with them, and is rolled back with everything else.
+delete from public.tasks where owning_section_id = 'opinion';
 delete from public.sections where id = 'opinion';
 update public.sections set name = 'Tampered', sort_order = 99 where id = 'news';
 update public.desks set name = 'Tampered' where id = 'photo';
