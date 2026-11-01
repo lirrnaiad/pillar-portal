@@ -14,6 +14,7 @@ import { phtInputToUtc } from "@/lib/time"
 import type { TaskErrorCode } from "./errors"
 import {
   slotHandBackSchema,
+  slotReassignSchema,
   slotRespondSchema,
   taskCreateSchema,
   taskDeleteSchema,
@@ -63,6 +64,10 @@ export type UpdateTaskState =
   | { ok: true; data: { taskId: string; newAssignee: boolean } }
   | ActionError
 
+export type ReassignSlotState =
+  | { ok: true; data: { slotId: string } }
+  | ActionError
+
 // The codes each command raises as `raise exception ... message = '<code>'`
 // and the UI has copy for. Any other message — a code the UI never expects
 // (create_task's tasks.no_slots and tasks.invalid_slot_member backstops), a
@@ -102,6 +107,19 @@ const UPDATE_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
   "tasks.duplicate_slot",
   "tasks.invalid_slot_member",
   "tasks.not_allowed",
+])
+
+// reassign_slot: the approver's codes, a Done task (tasks.not_allowed: the
+// task was marked Done while the picker was open), a member who left since
+// it loaded (tasks.invalid_slot_member) and its own repeated-pair check.
+const REASSIGN_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
+  "auth.not_active",
+  "tasks.not_found",
+  "tasks.not_approver",
+  "tasks.not_allowed",
+  "tasks.stale",
+  "tasks.invalid_slot_member",
+  "tasks.duplicate_slot",
 ])
 
 // task_assignments' own unique(task_id, member_id, role) constraint, not a
@@ -463,7 +481,9 @@ export async function updateTaskAction(
     due_at: dueAt.toISOString(),
     reference_url: parsed.data.referenceUrl,
     slots: parsed.data.slots.map((slot) => ({
-      ...(slot.id !== undefined ? { id: slot.id } : {}),
+      ...(slot.id !== undefined
+        ? { id: slot.id, loaded_member_id: slot.loadedMemberId }
+        : {}),
       role: slot.role,
       member_id: slot.memberId,
     })),
@@ -489,4 +509,47 @@ export async function updateTaskAction(
   // The review queue and Admin home's count.
   revalidatePath("/admin", "layout")
   return { ok: true, data: { taskId, newAssignee: data === true } }
+}
+
+/**
+ * Gives one slot to a member (AD-3, AD-4), passing the slot's `updated_at`
+ * the picker was rendered from (AD-21) exactly as PostgREST returned it. The
+ * same member resets the slot. reassign_slot decides whether the caller is
+ * the approver, the task isn't Done, the slot is unchanged and the member
+ * may take it; this only parses, calls it, maps the error and revalidates.
+ */
+export async function reassignSlotAction(
+  input: unknown
+): Promise<ReassignSlotState> {
+  const parsed = slotReassignSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { slotId, memberId, expectedUpdatedAt } = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("reassign_slot", {
+    slot_id: slotId,
+    member_id: memberId,
+    expected_updated_at: expectedUpdatedAt,
+  })
+
+  if (error) {
+    return {
+      ok: false,
+      code:
+        error.code === UNIQUE_VIOLATION
+          ? "tasks.duplicate_slot"
+          : mapError(error, REASSIGN_ERROR_CODES, "tasks.save_failed", {
+              route: "action reassignSlotAction",
+              entityType: "task_assignment",
+              entityId: slotId,
+            }),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  // The review queue and Admin home's count.
+  revalidatePath("/admin", "layout")
+  return { ok: true, data: { slotId } }
 }

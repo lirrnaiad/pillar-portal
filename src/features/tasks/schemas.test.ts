@@ -10,6 +10,7 @@ vi.mock("@/lib/env.client", () => ({
 
 const {
   REVISION_NOTE_MAX,
+  slotReassignSchema,
   slotRespondSchema,
   taskCreateSchema,
   taskMoveSchema,
@@ -349,7 +350,12 @@ describe("taskUpdateSchema", () => {
     dueAt: "2026-10-31T23:30",
     referenceUrl: null,
     slots: [
-      { id: SLOT_ID, role: "layout_artist" as const, memberId: MEMBER },
+      {
+        id: SLOT_ID,
+        loadedMemberId: MEMBER,
+        role: "layout_artist" as const,
+        memberId: MEMBER,
+      },
       { role: "writer" as const, memberId: OTHER },
     ],
   }
@@ -359,8 +365,41 @@ describe("taskUpdateSchema", () => {
     return result.success ? [] : result.error.issues
   }
 
-  it("accepts the task, its fields, and slots with an id (existing) or without (new)", () => {
+  it("accepts the task, its fields, and slots with an id and the member it loaded (existing) or neither (new)", () => {
     expect(taskUpdateSchema.parse(EDIT)).toEqual(EDIT)
+  })
+
+  it.each([
+    [
+      "an existing slot without the member it loaded",
+      [{ id: SLOT_ID, role: "writer", memberId: MEMBER }],
+    ],
+    [
+      "a new slot with a loaded member",
+      [{ loadedMemberId: MEMBER, role: "writer", memberId: MEMBER }],
+    ],
+  ])("refuses %s", (_name, slots) => {
+    expect(
+      updateIssues({ ...EDIT, slots }).some(
+        (issue) => issue.path.join(".") === "slots.0.loadedMemberId"
+      )
+    ).toBe(true)
+  })
+
+  it("refuses a loaded member that isn't a UUID", () => {
+    expect(
+      updateIssues({
+        ...EDIT,
+        slots: [
+          {
+            id: SLOT_ID,
+            loadedMemberId: "abc",
+            role: "writer",
+            memberId: MEMBER,
+          },
+        ],
+      }).some((issue) => issue.path.join(".") === "slots.0.loadedMemberId")
+    ).toBe(true)
   })
 
   it("has no owner: one passed along is dropped", () => {
@@ -398,12 +437,30 @@ describe("taskUpdateSchema", () => {
     ["no slots", { slots: [] }, "slots"],
     [
       "a slot id that isn't a UUID",
-      { slots: [{ id: "abc", role: "writer", memberId: MEMBER }] },
+      {
+        slots: [
+          {
+            id: "abc",
+            loadedMemberId: MEMBER,
+            role: "writer",
+            memberId: MEMBER,
+          },
+        ],
+      },
       "slots.0.id",
     ],
     [
       "a slot with an invalid role",
-      { slots: [{ id: SLOT_ID, role: "editor", memberId: MEMBER }] },
+      {
+        slots: [
+          {
+            id: SLOT_ID,
+            loadedMemberId: MEMBER,
+            role: "editor",
+            memberId: MEMBER,
+          },
+        ],
+      },
       "slots.0.role",
     ],
     [
@@ -423,7 +480,12 @@ describe("taskUpdateSchema", () => {
     [
       "an existing slot and a new one",
       [
-        { id: SLOT_ID, role: "writer", memberId: MEMBER },
+        {
+          id: SLOT_ID,
+          loadedMemberId: MEMBER,
+          role: "writer",
+          memberId: MEMBER,
+        },
         { role: "writer", memberId: MEMBER },
       ],
     ],
@@ -453,14 +515,48 @@ describe("taskUpdateSchema", () => {
       taskUpdateSchema.safeParse({
         ...EDIT,
         slots: [
-          { id: SLOT_ID, role: "writer", memberId: OTHER },
+          {
+            id: SLOT_ID,
+            loadedMemberId: MEMBER,
+            role: "writer",
+            memberId: OTHER,
+          },
           {
             id: "00000000-0000-4000-8000-000000000012",
+            loadedMemberId: OTHER,
             role: "writer",
             memberId: MEMBER,
           },
         ],
       }).success
     ).toBe(true)
+  })
+})
+
+describe("slotReassignSchema", () => {
+  const REASSIGN = {
+    slotId: SLOT_ID,
+    memberId: "00000000-0000-4000-8000-000000000001",
+    expectedUpdatedAt: "2026-10-30T02:15:42.123456+00:00",
+  }
+
+  it("accepts the slot, the member and the version, keeping the version's string as given", () => {
+    expect(slotReassignSchema.parse(REASSIGN)).toEqual(REASSIGN)
+  })
+
+  it.each([
+    ["a slot id that isn't a UUID", { slotId: "abc" }],
+    ["no member", { memberId: undefined }],
+    ["a member id that isn't a UUID", { memberId: "x" }],
+    ["no version", { expectedUpdatedAt: undefined }],
+    [
+      "a version without an offset",
+      { expectedUpdatedAt: "2026-10-30T02:15:42" },
+    ],
+    ["a version that isn't a timestamp", { expectedUpdatedAt: "now" }],
+  ])("refuses %s", (_name, change) => {
+    expect(
+      slotReassignSchema.safeParse({ ...REASSIGN, ...change }).success
+    ).toBe(false)
   })
 })

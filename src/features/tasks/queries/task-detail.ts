@@ -18,6 +18,12 @@ export type TaskDetailSlot = {
    * assignee or the task's approver) and the slot has one.
    */
   reason: string | null
+  /**
+   * The slot's version, `updated_at` exactly as PostgREST returned it, which
+   * the reassign picker passes back (AD-21). Never parsed: a `Date` would
+   * drop its microseconds.
+   */
+  updatedAt: string
 }
 
 /** The approver's note on a sent-back task, until its next column move. */
@@ -65,6 +71,11 @@ export type TaskDetail = {
    */
   canManage: boolean
   /**
+   * Whether it may reassign the task's slots: it is the approver and the
+   * task isn't Done. From task_capabilities.
+   */
+  canReassign: boolean
+  /**
    * The task's version, `updated_at` exactly as PostgREST returned it, which
    * a confirmation passes back (AD-21). Never parsed: a `Date` would drop
    * its microseconds.
@@ -99,7 +110,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
       .maybeSingle(),
     supabase
       .from("task_assignments")
-      .select("id, member_id, role, state")
+      .select("id, member_id, role, state, updated_at")
       .eq("task_id", id)
       .order("created_at")
       .order("id"),
@@ -192,6 +203,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
       memberName: nameById.get(slot.member_id) ?? FORMER_MEMBER,
       state: slot.state,
       reason: reasonBySlotId.get(slot.id) ?? null,
+      updatedAt: slot.updated_at,
     })),
     allowedMoves: capabilities?.allowed_moves ?? [],
     respondableSlotIds: capabilities?.respondable_slot_ids ?? [],
@@ -199,6 +211,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail | null> {
     canReview: capabilities?.can_review ?? false,
     canReopen: capabilities?.can_reopen ?? false,
     canManage: capabilities?.can_manage ?? false,
+    canReassign: capabilities?.can_reassign ?? false,
     updatedAt: task.updated_at,
     roleLabels: PRODUCTION_ROLE_LABELS,
   }

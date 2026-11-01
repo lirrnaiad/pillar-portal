@@ -1,9 +1,9 @@
 -- Account states (Story 2.1): declined and deactivated members are not
 -- active. They read nothing but their own `members` row, and every command
 -- raises `auth.not_active` for them, the approver's three included (Story
--- 3.1), delete_task (Story 3.2) and update_task (Story 3.7). This file also
--- covers the new-user trigger (insert only), the declined CHECK and the
--- before_user_created Auth hook.
+-- 3.1), delete_task (Story 3.2), update_task (Story 3.7) and reassign_slot
+-- (Story 3.3). This file also covers the new-user trigger (insert only), the
+-- declined CHECK and the before_user_created Auth hook.
 --
 -- The caller matrix is table-driven, as in members.test.sql: each row of
 -- `callers` is a caller, a DO block records what each one reads and what each
@@ -134,8 +134,9 @@ insert into callers values
 -- that has deleted tasks. Command
 -- results are `ok` (accepted, then rolled back) or `<sqlstate> <message>`.
 -- The approver's commands (delete_task included, on the To Do task with its
--- current version, and update_task, on the same task with its slots as
--- loaded) are accepted only from the active Head Layout Artist; a move to
+-- current version, update_task, on the same task with its slots as loaded,
+-- and reassign_slot, giving s06 to the staff member with s06's current
+-- version) are accepted only from the active Head Layout Artist; a move to
 -- Done is refused for everyone.
 create temp table expected as
 with t as (
@@ -173,7 +174,8 @@ cross join lateral (values
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active', 'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active'),
   ('declined',
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
@@ -181,7 +183,8 @@ cross join lateral (values
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active', 'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active'),
   ('deactivated former Head Layout Artist',
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
@@ -189,14 +192,16 @@ cross join lateral (values
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active', 'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active',
+   'P0001 auth.not_active'),
   ('active staff',
    1, 1, t.org, t.tasks, t.slots, t.activity, 0, t.directory, 2, 1, 2,
    true, false, false, true,
    'P0001 tasks.not_admin', 'ok', 'ok', 'ok',
    'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
    'P0001 tasks.not_approver', 'P0001 tasks.not_allowed',
-   'P0001 tasks.not_approver', 'P0001 tasks.not_approver'),
+   'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
+   'P0001 tasks.not_approver'),
   ('active admin (Sports Editor)',
    t.members, t.positions_held, t.org, t.tasks, t.slots, t.activity, 0,
    t.directory, 0, 1, 0,
@@ -205,7 +210,8 @@ cross join lateral (values
    'P0001 tasks.not_allowed',
    'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
    'P0001 tasks.not_approver', 'P0001 tasks.not_allowed',
-   'P0001 tasks.not_approver', 'P0001 tasks.not_approver'),
+   'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
+   'P0001 tasks.not_approver'),
   ('active Head Layout Artist',
    t.members, t.positions_held, t.org, t.tasks, t.slots, t.activity, 1,
    t.directory, 0, 1, 0,
@@ -213,7 +219,7 @@ cross join lateral (values
    'ok', 'P0001 tasks.not_allowed', 'P0001 tasks.not_allowed',
    'P0001 tasks.not_allowed',
    'ok', 'ok', 'ok', 'P0001 tasks.not_allowed',
-   'ok', 'ok')
+   'ok', 'ok', 'ok')
 ) as e(
   label,
   members, member_positions, org, tasks, task_assignments, activity, reasons,
@@ -221,7 +227,7 @@ cross join lateral (values
   is_active, is_admin, is_approver, can_join,
   create_task, respond_to_slot, move_task, hand_back_slot,
   mark_done, send_back_task, reopen_task, move_task_done,
-  delete_task, update_task
+  delete_task, update_task, reassign_slot
 );
 
 create temp table observed (like expected);
@@ -237,19 +243,24 @@ declare
   v_staff constant uuid := '00000000-0000-4000-e000-000000000004';
   v_task_version timestamptz;
   v_task_slots jsonb;
+  v_reassign_slot constant uuid := '00000000-0000-4000-e200-000000000006';
+  v_reassign_version timestamptz;
 begin
   -- Read the fixtures while still `postgres`: `authenticated` can't read
-  -- temp tables, and a non-active caller can't read the task's version or
-  -- its slots.
+  -- temp tables, and a non-active caller can't read the task's version, its
+  -- slots or a slot's version.
   select array_agg(x) into v_callers from callers x;
   select t.updated_at into v_task_version
   from public.tasks t where t.id = v_task;
   select jsonb_agg(
            jsonb_build_object('id', a.id, 'role', a.role,
-                              'member_id', a.member_id)
+                              'member_id', a.member_id,
+                              'loaded_member_id', a.member_id)
            order by a.created_at, a.id)
     into v_task_slots
   from public.task_assignments a where a.task_id = v_task;
+  select a.updated_at into v_reassign_version
+  from public.task_assignments a where a.id = v_reassign_slot;
 
   foreach c in array v_callers loop
     perform set_config(
@@ -377,6 +388,15 @@ begin
     exception when others then
       o.update_task := case when sqlerrm = 'probe.accepted' then 'ok'
                             else sqlstate || ' ' || sqlerrm end;
+    end;
+
+    -- The deactivated member's handed-back s06, to the active staff member.
+    begin
+      perform public.reassign_slot(v_reassign_slot, v_staff, v_reassign_version);
+      raise exception using errcode = 'P0001', message = 'probe.accepted';
+    exception when others then
+      o.reassign_slot := case when sqlerrm = 'probe.accepted' then 'ok'
+                              else sqlstate || ' ' || sqlerrm end;
     end;
 
     set local role postgres;

@@ -399,10 +399,27 @@ const TASK: TaskEdit = {
   updatedAt: "2026-10-30T02:15:42.123456+00:00",
 }
 
+// Each existing slot carries the member it loaded with (Story 3.3), so a
+// save over a reassignment made since is refused as stale.
 const LOADED_SLOTS = [
-  { id: SLOT_A, role: "layout_artist", memberId: MEMBER_1 },
-  { id: SLOT_B, role: "cartoonist", memberId: MEMBER_1 },
-  { id: SLOT_C, role: "photojournalist", memberId: FORMER },
+  {
+    id: SLOT_A,
+    loadedMemberId: MEMBER_1,
+    role: "layout_artist",
+    memberId: MEMBER_1,
+  },
+  {
+    id: SLOT_B,
+    loadedMemberId: MEMBER_1,
+    role: "cartoonist",
+    memberId: MEMBER_1,
+  },
+  {
+    id: SLOT_C,
+    loadedMemberId: FORMER,
+    role: "photojournalist",
+    memberId: FORMER,
+  },
 ]
 
 // As the edit page renders it: keyed with taskEditKey, so a re-read that
@@ -531,7 +548,7 @@ describe("TaskForm in edit mode", () => {
     expect(save()).toBeDisabled()
   })
 
-  it("sends a reassigned slot with its id and a new one without, and offers Copy for Messenger when a slot got a new member", async () => {
+  it("sends a reassigned slot with its id and the member it loaded, a new one with neither, and offers Copy for Messenger when a slot got a new member", async () => {
     updateTaskAction.mockResolvedValue({
       ok: true,
       data: { taskId: TASK_ID, newAssignee: true },
@@ -546,11 +563,19 @@ describe("TaskForm in edit mode", () => {
 
     await waitFor(() => expect(push).toHaveBeenCalledOnce())
     expect(updateTaskAction.mock.calls[0][0].slots).toEqual([
-      { id: SLOT_A, role: "layout_artist", memberId: MEMBER_1 },
-      { id: SLOT_B, role: "cartoonist", memberId: MEMBER_2 },
-      { id: SLOT_C, role: "photojournalist", memberId: FORMER },
+      LOADED_SLOTS[0],
+      {
+        id: SLOT_B,
+        loadedMemberId: MEMBER_1,
+        role: "cartoonist",
+        memberId: MEMBER_2,
+      },
+      LOADED_SLOTS[2],
       { role: "writer", memberId: MEMBER_2 },
     ])
+    expect(updateTaskAction.mock.calls[0][0].slots[3]).not.toHaveProperty(
+      "loadedMemberId"
+    )
     expect(toastSuccess).toHaveBeenCalledWith("Task saved.", {
       action: expect.objectContaining({ label: "Copy for Messenger" }),
     })

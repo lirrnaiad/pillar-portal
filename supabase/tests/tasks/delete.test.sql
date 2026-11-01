@@ -273,12 +273,14 @@ select is_empty(
   'every helper states t.deleted_at is null'
 );
 
+-- Story 3.3 adds can_reassign after can_manage (reassign.test.sql pins the
+-- whole list), so only the columns up to can_manage are pinned here.
 select is(
-  (select p.proargnames from pg_proc p
+  (select (p.proargnames)[1:8] from pg_proc p
    where p.oid = 'public.task_capabilities(uuid[])'::regprocedure),
   array['ids', 'task_id', 'allowed_moves', 'respondable_slot_ids',
         'hand_back_slot_ids', 'can_review', 'can_reopen', 'can_manage'],
-  'task_capabilities keeps its columns and adds can_manage last'
+  'task_capabilities keeps its columns and adds can_manage after can_reopen'
 );
 
 -- The approver matrix: each caller, and whether they approve the Layout,

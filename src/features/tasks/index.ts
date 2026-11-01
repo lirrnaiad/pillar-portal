@@ -6,6 +6,7 @@ export {
   handBackSlotAction,
   markDoneAction,
   moveTaskAction,
+  reassignSlotAction,
   reopenTaskAction,
   respondToSlotAction,
   sendBackTaskAction,
@@ -17,6 +18,7 @@ export type {
   HandBackSlotState,
   MarkDoneState,
   MoveTaskState,
+  ReassignSlotState,
   ReopenTaskState,
   RespondToSlotState,
   SendBackTaskState,
@@ -73,6 +75,8 @@ export { getBoard, getBoardOwners } from "./queries/board"
 export type { BoardCard } from "./queries/board"
 export { getTaskForCalendar } from "./queries/calendar"
 export { getPlanner } from "./queries/planner"
+export { getReassignOptions } from "./queries/reassign"
+export type { ReassignOptions } from "./queries/reassign"
 export {
   countReviewQueueForViewer,
   getReviewQueue,
@@ -98,6 +102,7 @@ export {
   PRODUCTION_ROLES,
   REVISION_NOTE_MAX,
   slotHandBackSchema,
+  slotReassignSchema,
   slotRespondSchema,
   taskCreateSchema,
   taskDeleteSchema,
@@ -108,6 +113,7 @@ export {
 } from "./schemas"
 export type {
   SlotHandBackInput,
+  SlotReassignInput,
   SlotRespondInput,
   TaskCreateInput,
   TaskDeleteInput,

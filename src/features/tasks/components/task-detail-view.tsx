@@ -5,11 +5,13 @@ import { formatInPht } from "@/lib/time"
 
 import { buildCalendarEvent, googleCalendarUrl } from "../calendar"
 import { buildMessengerMessage } from "../messenger"
+import type { ReassignOptions } from "../queries/reassign"
 import type { TaskDetail } from "../queries/task-detail"
 import { SLOT_STATE_FAMILIES, SLOT_STATE_LABELS } from "../status"
 import { AddToCalendarMenu } from "./calendar-menu"
 import { CopyForMessenger } from "./copy-for-messenger"
 import { HandBack } from "./hand-back"
+import { ReassignSlot } from "./reassign-slot"
 import { SlotResponse } from "./slot-response"
 import { TaskColumnControl } from "./task-column-control"
 import { TaskManage } from "./task-manage"
@@ -24,11 +26,19 @@ const NOTE_DATE_FORMAT = "EEE, MMM d, yyyy"
  * note under it while the task stands sent back), owner, due date in PHT,
  * reference link, description, then one row per slot. Which actions appear
  * comes only from `task.allowedMoves`, `task.respondableSlotIds`,
- * `task.handBackSlotIds`, `task.canReview`, `task.canReopen` and
- * `task.canManage` (task_capabilities, AD-4); nothing here looks at roles,
- * positions or who holds a slot.
+ * `task.handBackSlotIds`, `task.canReview`, `task.canReopen`,
+ * `task.canManage` and `task.canReassign` (task_capabilities, AD-4); nothing
+ * here looks at roles, positions, slot states or who holds a slot.
+ * `reassignOptions`, the picker's members, comes with `canReassign`: each
+ * slot's Reassign needs both.
  */
-export function TaskDetailView({ task }: { task: TaskDetail }) {
+export function TaskDetailView({
+  task,
+  reassignOptions,
+}: {
+  task: TaskDetail
+  reassignOptions?: ReassignOptions
+}) {
   const respondable = new Set(task.respondableSlotIds)
   const handBackable = new Set(task.handBackSlotIds)
   const handBackSlots = task.slots.filter((slot) => handBackable.has(slot.id))
@@ -163,7 +173,8 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
         {task.slots.map((slot) => {
           const roleLabel = task.roleLabels[slot.role]
           // Focus lands here once an answer is saved and SlotResponse goes
-          // away, so it stays on this slot instead of falling to the page.
+          // away, or Reassign goes, so it stays on this slot instead of
+          // falling to the page.
           const rowId = `slot-${slot.id}`
           return (
             <li
@@ -194,6 +205,24 @@ export function TaskDetailView({ task }: { task: TaskDetail }) {
                   slotLabel={roleLabel}
                   rowId={rowId}
                 />
+              )}
+              {task.canReassign && reassignOptions !== undefined && (
+                <div className="mt-3">
+                  <ReassignSlot
+                    taskId={task.id}
+                    taskTitle={task.title}
+                    taskDueAt={task.dueAt}
+                    slotId={slot.id}
+                    role={slot.role}
+                    memberId={slot.memberId}
+                    memberName={slot.memberName}
+                    stateLabel={SLOT_STATE_LABELS[slot.state]}
+                    expectedUpdatedAt={slot.updatedAt}
+                    options={reassignOptions}
+                    focusTargetId={rowId}
+                    fallbackFocusTargetId={TASK_STATUS_ID}
+                  />
+                </div>
               )}
             </li>
           )

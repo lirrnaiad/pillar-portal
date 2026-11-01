@@ -183,18 +183,26 @@ const TASK_ROW = {
 }
 
 const SLOT_ROWS = [
-  { id: SLOT_A, member_id: HEAD_LAYOUT, role: "layout_artist", state: "on_it" },
+  {
+    id: SLOT_A,
+    member_id: HEAD_LAYOUT,
+    role: "layout_artist",
+    state: "on_it",
+    updated_at: "2026-10-30T02:15:42.000001+00:00",
+  },
   {
     id: SLOT_B,
     member_id: STAFF_WRITER,
     role: "writer",
     state: "needs_reassignment",
+    updated_at: "2026-10-30T02:15:42.000002+00:00",
   },
   {
     id: SLOT_C,
     member_id: FORMER,
     role: "cartoonist",
     state: "awaiting_response",
+    updated_at: "2026-10-30T02:15:42+00:00",
   },
 ]
 
@@ -230,6 +238,7 @@ function mockDetail({
       can_review: false,
       can_reopen: false,
       can_manage: false,
+      can_reassign: false,
     },
   ] as unknown,
   members = [
@@ -297,6 +306,10 @@ describe("getTaskDetail", () => {
     ])
     expect(tasks.calls).toContainEqual(["eq", "id", TASK_ID])
     const slots = calls.find((c) => c.table === "task_assignments")!
+    expect(slots.calls).toContainEqual([
+      "select",
+      "id, member_id, role, state, updated_at",
+    ])
     expect(slots.calls).toContainEqual(["eq", "task_id", TASK_ID])
     expect(slots.calls.filter(([method]) => method === "order")).toEqual([
       ["order", "created_at"],
@@ -349,6 +362,7 @@ describe("getTaskDetail", () => {
           memberName: "Head Layout Artist",
           state: "on_it",
           reason: null,
+          updatedAt: "2026-10-30T02:15:42.000001+00:00",
         },
         {
           id: SLOT_B,
@@ -357,6 +371,7 @@ describe("getTaskDetail", () => {
           memberName: "Staff Writer",
           state: "needs_reassignment",
           reason: "Exams all week",
+          updatedAt: "2026-10-30T02:15:42.000002+00:00",
         },
         {
           id: SLOT_C,
@@ -365,6 +380,7 @@ describe("getTaskDetail", () => {
           memberName: "Former member",
           state: "awaiting_response",
           reason: null,
+          updatedAt: "2026-10-30T02:15:42+00:00",
         },
       ],
       allowedMoves: ["doing", "for_review"],
@@ -373,6 +389,7 @@ describe("getTaskDetail", () => {
       canReview: false,
       canReopen: false,
       canManage: false,
+      canReassign: false,
       updatedAt: "2026-10-30T02:15:42.123456+00:00",
       roleLabels: expect.objectContaining({ layout_artist: "Layout Artist" }),
     })
@@ -471,6 +488,40 @@ describe("getTaskDetail", () => {
     }
   )
 
+  it.each([true, false])(
+    "passes task_capabilities' can_reassign (%s) through",
+    async (canReassign) => {
+      mockDetail({
+        capabilities: [
+          {
+            task_id: TASK_ID,
+            allowed_moves: [],
+            respondable_slot_ids: [],
+            hand_back_slot_ids: [],
+            can_review: false,
+            can_reopen: false,
+            can_manage: true,
+            can_reassign: canReassign,
+          },
+        ],
+      })
+
+      expect((await getTaskDetail(TASK_ID))?.canReassign).toBe(canReassign)
+    }
+  )
+
+  it("passes each slot's updated_at through as the same string, microseconds and all", async () => {
+    mockDetail()
+
+    expect(
+      (await getTaskDetail(TASK_ID))?.slots.map((slot) => slot.updatedAt)
+    ).toEqual([
+      "2026-10-30T02:15:42.000001+00:00",
+      "2026-10-30T02:15:42.000002+00:00",
+      "2026-10-30T02:15:42+00:00",
+    ])
+  })
+
   it("passes updated_at through as the same string, microseconds and all", async () => {
     mockDetail({
       task: { ...TASK_ROW, updated_at: "2026-10-30T02:15:42.000001+00:00" },
@@ -500,6 +551,7 @@ describe("getTaskDetail", () => {
     expect(detail?.canReview).toBe(false)
     expect(detail?.canReopen).toBe(false)
     expect(detail?.canManage).toBe(false)
+    expect(detail?.canReassign).toBe(false)
   })
 
   it.each([

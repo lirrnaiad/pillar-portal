@@ -6,18 +6,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { getTaskDetail, TaskDetailView, TaskNotFound, requireActiveMember } =
-  vi.hoisted(() => ({
-    getTaskDetail: vi.fn(),
-    TaskDetailView: vi.fn<(props: { task: unknown }) => React.ReactNode>(() => (
-      <h1>Task detail view</h1>
-    )),
-    // Its copy and link have their own tests (task-not-found.test.tsx).
-    TaskNotFound: vi.fn(() => <h1>Task not found</h1>),
-    requireActiveMember: vi.fn(),
-  }))
+const {
+  getReassignOptions,
+  getTaskDetail,
+  TaskDetailView,
+  TaskNotFound,
+  requireActiveMember,
+} = vi.hoisted(() => ({
+  getReassignOptions: vi.fn(),
+  getTaskDetail: vi.fn(),
+  TaskDetailView: vi.fn<
+    (props: { task: unknown; reassignOptions?: unknown }) => React.ReactNode
+  >(() => <h1>Task detail view</h1>),
+  // Its copy and link have their own tests (task-not-found.test.tsx).
+  TaskNotFound: vi.fn(() => <h1>Task not found</h1>),
+  requireActiveMember: vi.fn(),
+}))
 
 vi.mock("@/features/tasks", () => ({
+  getReassignOptions,
   getTaskDetail,
   TaskDetailView,
   TaskNotFound,
@@ -66,15 +73,53 @@ describe("TaskPage", () => {
   })
 
   it("loads the task by its id and renders TaskDetailView with it", async () => {
-    const task = { id: TASK_ID, title: "Lay out the spread" }
+    const task = {
+      id: TASK_ID,
+      title: "Lay out the spread",
+      canReassign: false,
+    }
     getTaskDetail.mockResolvedValue(task)
 
     await renderPage(TASK_ID)
 
     expect(getTaskDetail).toHaveBeenCalledExactlyOnceWith(TASK_ID)
     expect(TaskDetailView).toHaveBeenCalledOnce()
-    expect(TaskDetailView.mock.calls[0][0]).toEqual({ task })
+    expect(TaskDetailView.mock.calls[0][0]).toStrictEqual({
+      task,
+      reassignOptions: undefined,
+    })
     expect(screen.getByText("Task detail view")).toBeInTheDocument()
+  })
+
+  it("reads no reassign options when task_capabilities doesn't offer Reassign", async () => {
+    getTaskDetail.mockResolvedValue({ id: TASK_ID, canReassign: false })
+
+    await renderPage(TASK_ID)
+
+    expect(getReassignOptions).not.toHaveBeenCalled()
+    expect(TaskDetailView.mock.calls[0][0].reassignOptions).toBeUndefined()
+  })
+
+  it("reads the reassign options, after the task, only when it offers Reassign, and passes them on", async () => {
+    const task = { id: TASK_ID, title: "Lay out the spread", canReassign: true }
+    const reassignOptions = {
+      slotMembersByRole: {},
+      allMembers: [],
+      roleLabels: {},
+    }
+    getTaskDetail.mockResolvedValue(task)
+    getReassignOptions.mockResolvedValue(reassignOptions)
+
+    await renderPage(TASK_ID)
+
+    expect(getReassignOptions).toHaveBeenCalledExactlyOnceWith()
+    expect(getTaskDetail.mock.invocationCallOrder[0]).toBeLessThan(
+      getReassignOptions.mock.invocationCallOrder[0]
+    )
+    expect(TaskDetailView.mock.calls[0][0]).toStrictEqual({
+      task,
+      reassignOptions,
+    })
   })
 
   it.each([TASK_ID, "abc"])(
@@ -90,6 +135,7 @@ describe("TaskPage", () => {
         screen.getByRole("heading", { level: 1, name: "Task not found" })
       ).toBeInTheDocument()
       expect(TaskDetailView).not.toHaveBeenCalled()
+      expect(getReassignOptions).not.toHaveBeenCalled()
     }
   )
 

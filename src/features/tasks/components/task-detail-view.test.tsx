@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import type { ReassignOptions } from "../queries/reassign"
 import type { TaskDetail } from "../queries/task-detail"
 import { TaskDetailView } from "./task-detail-view"
 
@@ -19,22 +20,27 @@ const {
   deleteTaskAction,
   handBackSlotAction,
   markDoneAction,
+  reassignSlotAction,
   refresh,
   reopenTaskAction,
   replace,
+  toastSuccess,
 } = vi.hoisted(() => ({
   deleteTaskAction: vi.fn(),
   handBackSlotAction: vi.fn(),
   markDoneAction: vi.fn(),
+  reassignSlotAction: vi.fn(),
   refresh: vi.fn(),
   reopenTaskAction: vi.fn(),
   replace: vi.fn(),
+  toastSuccess: vi.fn(),
 }))
 vi.mock("../actions", () => ({
   deleteTaskAction,
   handBackSlotAction,
   markDoneAction,
   moveTaskAction: vi.fn(),
+  reassignSlotAction,
   reopenTaskAction,
   respondToSlotAction: vi.fn(),
   sendBackTaskAction: vi.fn(),
@@ -45,7 +51,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/env.client", () => ({
   clientEnv: { NEXT_PUBLIC_SITE_URL: "https://pillar.example" },
 }))
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: toastSuccess } }))
 
 // jsdom implements neither PointerEvent capture nor scrollIntoView, which
 // Radix's Select relies on to open/scroll its portal content.
@@ -58,6 +64,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.clearAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -91,6 +98,7 @@ const TASK: TaskDetail = {
       memberName: "Staff Layout Artist",
       state: "awaiting_response",
       reason: null,
+      updatedAt: "2026-10-30T02:15:42.000031+00:00",
     },
     {
       id: CARTOON_SLOT,
@@ -99,6 +107,7 @@ const TASK: TaskDetail = {
       memberName: "Staff Layout Artist",
       state: "awaiting_response",
       reason: null,
+      updatedAt: "2026-10-30T02:15:42.000032+00:00",
     },
     {
       id: WRITER_SLOT,
@@ -107,6 +116,7 @@ const TASK: TaskDetail = {
       memberName: "Former member",
       state: "needs_reassignment",
       reason: "Exams all week",
+      updatedAt: "2026-10-30T02:15:42.000033+00:00",
     },
   ],
   allowedMoves: ["to_do", "for_review"],
@@ -115,6 +125,7 @@ const TASK: TaskDetail = {
   canReview: false,
   canReopen: false,
   canManage: false,
+  canReassign: false,
   updatedAt: "2026-10-30T02:15:42.123456+00:00",
   roleLabels: {
     writer: "Writer",
@@ -124,6 +135,33 @@ const TASK: TaskDetail = {
     broadcast_journalist: "Broadcast Journalist",
     videojournalist: "Videojournalist",
   },
+}
+
+// The picker's members: Staff Writer (one open slot) is the only one on the
+// Writers desk.
+const REASSIGN_OPTIONS: ReassignOptions = {
+  slotMembersByRole: {
+    writer: [
+      {
+        id: "00000000-0000-4000-8000-000000000003",
+        name: "Staff Writer",
+        openSlots: 1,
+      },
+    ],
+  },
+  allMembers: [
+    {
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "Staff Layout Artist",
+      openSlots: 2,
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000003",
+      name: "Staff Writer",
+      openSlots: 1,
+    },
+  ],
+  roleLabels: TASK.roleLabels,
 }
 
 function slotRows() {
@@ -557,6 +595,144 @@ describe("TaskDetailView", () => {
     })
   })
 
+  // jsdom drops the space before an sr-only label ("Reassign(Writer)"), so
+  // the names are matched with an optional space.
+  it("offers Reassign on every slot only when canReassign, named for each slot's role", () => {
+    const { rerender } = render(
+      <TaskDetailView task={TASK} reassignOptions={REASSIGN_OPTIONS} />
+    )
+    expect(screen.queryByRole("button", { name: /^Reassign/ })).toBeNull()
+
+    rerender(
+      <TaskDetailView
+        task={{ ...TASK, canReassign: true }}
+        reassignOptions={REASSIGN_OPTIONS}
+      />
+    )
+
+    const rows = slotRows()
+    expect(
+      rows.map(
+        (row) =>
+          within(row).getAllByRole("button", { name: /^Reassign/ }).length
+      )
+    ).toEqual([1, 1, 1])
+    expect(
+      within(rows[0]).getByRole("button", {
+        name: /^Reassign\s?\(Layout Artist\)$/,
+      })
+    ).toHaveAttribute("data-variant", "outline")
+    expect(
+      within(rows[1]).getByRole("button", {
+        name: /^Reassign\s?\(Cartoonist\)$/,
+      })
+    ).toBeInTheDocument()
+    expect(
+      within(rows[2]).getByRole("button", { name: /^Reassign\s?\(Writer\)$/ })
+    ).toBeInTheDocument()
+  })
+
+  it("offers no Reassign without the picker's members", () => {
+    render(<TaskDetailView task={{ ...TASK, canReassign: true }} />)
+
+    expect(screen.queryByRole("button", { name: /^Reassign/ })).toBeNull()
+  })
+
+  it("opens the picker for the slot whose Reassign was used, and reassigns it with that slot's version", async () => {
+    const user = userEvent.setup()
+    reassignSlotAction.mockResolvedValue({
+      ok: true,
+      data: { slotId: WRITER_SLOT },
+    })
+    render(
+      <TaskDetailView
+        task={{ ...TASK, canReassign: true }}
+        reassignOptions={REASSIGN_OPTIONS}
+      />
+    )
+
+    // jsdom drops the space before the sr-only role ("Reassign(Writer)").
+    await user.click(
+      screen.getByRole("button", { name: /^Reassign\s?\(Writer\)$/ })
+    )
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveAccessibleName("Reassign Writer")
+    expect(dialog).toHaveAccessibleDescription(
+      "Former member · Needs reassignment"
+    )
+    await user.click(
+      within(dialog).getByRole("radio", { name: "Staff Writer · 1 active" })
+    )
+    await user.click(within(dialog).getByRole("button", { name: "Reassign" }))
+
+    await waitFor(() =>
+      expect(reassignSlotAction).toHaveBeenCalledExactlyOnceWith({
+        slotId: WRITER_SLOT,
+        memberId: "00000000-0000-4000-8000-000000000003",
+        expectedUpdatedAt: "2026-10-30T02:15:42.000033+00:00",
+      })
+    )
+  })
+
+  it("reassigns a slot end to end: its member marked current in the picker, the toast's Copy for Messenger for that slot's role, and focus kept on its row when Reassign goes", async () => {
+    const user = userEvent.setup()
+    reassignSlotAction.mockResolvedValue({
+      ok: true,
+      data: { slotId: LAYOUT_SLOT },
+    })
+    const reassignable = { ...TASK, canReassign: true }
+    const { rerender } = render(
+      <TaskDetailView task={reassignable} reassignOptions={REASSIGN_OPTIONS} />
+    )
+
+    const layoutReassign = () =>
+      screen.getByRole("button", { name: /^Reassign\s?\(Layout Artist\)$/ })
+    await user.click(layoutReassign())
+    const dialog = screen.getByRole("dialog")
+    // No one is on the Layout desk here, so the picker lists everyone; the
+    // slot's own member is in it.
+    expect(
+      within(dialog).getByRole("radio", {
+        name: "Staff Layout Artist · 2 active (current)",
+      })
+    ).toBeInTheDocument()
+    await user.click(
+      within(dialog).getByRole("radio", { name: "Staff Writer · 1 active" })
+    )
+    await user.click(within(dialog).getByRole("button", { name: "Reassign" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(reassignSlotAction).toHaveBeenCalledExactlyOnceWith({
+      slotId: LAYOUT_SLOT,
+      memberId: "00000000-0000-4000-8000-000000000003",
+      expectedUpdatedAt: "2026-10-30T02:15:42.000031+00:00",
+    })
+    expect(toastSuccess).toHaveBeenCalledExactlyOnceWith(
+      "Reassigned to Staff Writer.",
+      { action: expect.objectContaining({ label: "Copy for Messenger" }) }
+    )
+
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    await toastSuccess.mock.calls[0][1].action.onClick()
+    // The task's title, the reassigned slot's role only, the due date in
+    // PHT, and the task's own link.
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(
+      `📌 Lay out the spread — Layout Artist · due Sat, Oct 31, 11:30 PM\nhttps://pillar.example/dashboard/tasks/${TASK.id}`
+    )
+
+    await waitFor(() => expect(layoutReassign()).toHaveFocus())
+    // A refresh shows the task can't be reassigned any more.
+    rerender(
+      <TaskDetailView
+        task={{ ...reassignable, canReassign: false }}
+        reassignOptions={REASSIGN_OPTIONS}
+      />
+    )
+    expect(screen.queryByRole("button", { name: /^Reassign/ })).toBeNull()
+    expect(document.getElementById(`slot-${LAYOUT_SLOT}`)).toHaveFocus()
+  })
+
   it("omits the reference link row and the description when they're empty", () => {
     render(
       <TaskDetailView
@@ -582,14 +758,16 @@ describe("TaskDetailView", () => {
     expect(await axeViolations(container)).toEqual([])
   })
 
-  it("has no axe violations with a revision note, the review buttons and Delete", async () => {
+  it("has no axe violations with a revision note, the review buttons, Delete and Reassign", async () => {
     const { container } = render(
       <TaskDetailView
+        reassignOptions={REASSIGN_OPTIONS}
         task={{
           ...TASK,
           column: "for_review",
           canReview: true,
           canManage: true,
+          canReassign: true,
           revisionNote: {
             text: "Fix the captions.",
             byName: "Head Layout Artist",

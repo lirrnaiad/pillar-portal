@@ -539,6 +539,13 @@ export type Database = {
       }
       health_check: { Args: never; Returns: boolean }
       mark_done: { Args: { task_id: string }; Returns: undefined }
+      member_open_slot_counts: {
+        Args: never
+        Returns: {
+          member_id: string
+          open_slots: number
+        }[]
+      }
       move_task: {
         Args: {
           task_id: string
@@ -563,6 +570,14 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      reassign_slot: {
+        Args: {
+          expected_updated_at: string
+          member_id: string
+          slot_id: string
+        }
+        Returns: undefined
       }
       record_error_event: {
         Args: {
@@ -592,6 +607,7 @@ export type Database = {
         Returns: {
           allowed_moves: Database["public"]["Enums"]["task_column"][]
           can_manage: boolean
+          can_reassign: boolean
           can_reopen: boolean
           can_review: boolean
           hand_back_slot_ids: string[]
