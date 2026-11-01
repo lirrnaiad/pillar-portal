@@ -2,22 +2,26 @@
 import "@testing-library/jest-dom/vitest"
 
 import { cleanup, render, screen } from "@testing-library/react"
-import axe from "axe-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { getTaskDetail, TaskDetailView, requireActiveMember } = vi.hoisted(
-  () => ({
+const { getTaskDetail, TaskDetailView, TaskNotFound, requireActiveMember } =
+  vi.hoisted(() => ({
     getTaskDetail: vi.fn(),
     TaskDetailView: vi.fn<(props: { task: unknown }) => React.ReactNode>(() => (
       <h1>Task detail view</h1>
     )),
+    // Its copy and link have their own tests (task-not-found.test.tsx).
+    TaskNotFound: vi.fn(() => <h1>Task not found</h1>),
     requireActiveMember: vi.fn(),
-  })
-)
+  }))
 
-vi.mock("@/features/tasks", () => ({ getTaskDetail, TaskDetailView }))
+vi.mock("@/features/tasks", () => ({
+  getTaskDetail,
+  TaskDetailView,
+  TaskNotFound,
+}))
 // The shared state check has its own tests (members' queries.test.ts).
 vi.mock("@/features/members", () => ({ requireActiveMember }))
 
@@ -33,14 +37,6 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
-
-// color-contrast can't be computed in jsdom (it is always "incomplete").
-async function axeViolations(node: Element) {
-  const results = await axe.run(node, {
-    rules: { "color-contrast": { enabled: false } },
-  })
-  return results.violations
-}
 
 async function renderPage(id: string) {
   return render(
@@ -82,22 +78,17 @@ describe("TaskPage", () => {
   })
 
   it.each([TASK_ID, "abc"])(
-    "shows the not-found copy and a link back to What's mine when there's no task for %j",
+    "shows the shared not-found block when there's no task for %j",
     async (id) => {
       getTaskDetail.mockResolvedValue(null)
 
       await renderPage(id)
 
       expect(getTaskDetail).toHaveBeenCalledExactlyOnceWith(id)
+      expect(TaskNotFound).toHaveBeenCalledOnce()
       expect(
-        screen.getByRole("heading", {
-          level: 1,
-          name: "This task was deleted or the link is wrong.",
-        })
+        screen.getByRole("heading", { level: 1, name: "Task not found" })
       ).toBeInTheDocument()
-      expect(
-        screen.getByRole("link", { name: "Back to What's mine" })
-      ).toHaveAttribute("href", "/dashboard")
       expect(TaskDetailView).not.toHaveBeenCalled()
     }
   )
@@ -109,21 +100,7 @@ describe("TaskPage", () => {
 
     await renderPage(TASK_ID)
 
-    expect(
-      screen.getByRole("heading", {
-        level: 1,
-        name: "This task was deleted or the link is wrong.",
-      })
-    ).toBeInTheDocument()
+    expect(TaskNotFound).toHaveBeenCalledOnce()
     expect(TaskDetailView).not.toHaveBeenCalled()
-  })
-
-  it("has no axe violations in the not-found state", async () => {
-    getTaskDetail.mockResolvedValue(null)
-
-    // The page renders inside the member shell's <main>, which isn't here.
-    const { container } = await renderPage("abc")
-
-    expect(await axeViolations(container)).toEqual([])
   })
 })

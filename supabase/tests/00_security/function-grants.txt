@@ -79,3 +79,7 @@ authenticated public.reopen_task(uuid)
 # tasks_delete: the approver's soft delete (its helpers and the recreated
 # task_capabilities keep the grants listed above)
 authenticated public.delete_task(uuid, timestamp with time zone)
+
+# tasks_edit: the approver's edit (private.reassign_slot_member, the reassign
+# branch it shares with reassign_slot, has no grant: only a command calls it)
+authenticated public.update_task(uuid, text, text, timestamp with time zone, text, jsonb)

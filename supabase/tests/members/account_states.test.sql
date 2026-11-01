@@ -1,9 +1,9 @@
 -- Account states (Story 2.1): declined and deactivated members are not
 -- active. They read nothing but their own `members` row, and every command
 -- raises `auth.not_active` for them, the approver's three included (Story
--- 3.1), and delete_task (Story 3.2). This file also covers the new-user
--- trigger (insert only), the declined CHECK and the before_user_created Auth
--- hook.
+-- 3.1), delete_task (Story 3.2) and update_task (Story 3.7). This file also
+-- covers the new-user trigger (insert only), the declined CHECK and the
+-- before_user_created Auth hook.
 --
 -- The caller matrix is table-driven, as in members.test.sql: each row of
 -- `callers` is a caller, a DO block records what each one reads and what each
@@ -134,8 +134,9 @@ insert into callers values
 -- that has deleted tasks. Command
 -- results are `ok` (accepted, then rolled back) or `<sqlstate> <message>`.
 -- The approver's commands (delete_task included, on the To Do task with its
--- current version) are accepted only from the active Head Layout Artist; a
--- move to Done is refused for everyone.
+-- current version, and update_task, on the same task with its slots as
+-- loaded) are accepted only from the active Head Layout Artist; a move to
+-- Done is refused for everyone.
 create temp table expected as
 with t as (
   select
@@ -172,7 +173,7 @@ cross join lateral (values
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active'),
   ('declined',
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
@@ -180,7 +181,7 @@ cross join lateral (values
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active'),
   ('deactivated former Head Layout Artist',
    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    false, false, false, false,
@@ -188,14 +189,14 @@ cross join lateral (values
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
    'P0001 auth.not_active', 'P0001 auth.not_active',
-   'P0001 auth.not_active'),
+   'P0001 auth.not_active', 'P0001 auth.not_active'),
   ('active staff',
    1, 1, t.org, t.tasks, t.slots, t.activity, 0, t.directory, 2, 1, 2,
    true, false, false, true,
    'P0001 tasks.not_admin', 'ok', 'ok', 'ok',
    'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
    'P0001 tasks.not_approver', 'P0001 tasks.not_allowed',
-   'P0001 tasks.not_approver'),
+   'P0001 tasks.not_approver', 'P0001 tasks.not_approver'),
   ('active admin (Sports Editor)',
    t.members, t.positions_held, t.org, t.tasks, t.slots, t.activity, 0,
    t.directory, 0, 1, 0,
@@ -204,7 +205,7 @@ cross join lateral (values
    'P0001 tasks.not_allowed',
    'P0001 tasks.not_approver', 'P0001 tasks.not_approver',
    'P0001 tasks.not_approver', 'P0001 tasks.not_allowed',
-   'P0001 tasks.not_approver'),
+   'P0001 tasks.not_approver', 'P0001 tasks.not_approver'),
   ('active Head Layout Artist',
    t.members, t.positions_held, t.org, t.tasks, t.slots, t.activity, 1,
    t.directory, 0, 1, 0,
@@ -212,7 +213,7 @@ cross join lateral (values
    'ok', 'P0001 tasks.not_allowed', 'P0001 tasks.not_allowed',
    'P0001 tasks.not_allowed',
    'ok', 'ok', 'ok', 'P0001 tasks.not_allowed',
-   'ok')
+   'ok', 'ok')
 ) as e(
   label,
   members, member_positions, org, tasks, task_assignments, activity, reasons,
@@ -220,7 +221,7 @@ cross join lateral (values
   is_active, is_admin, is_approver, can_join,
   create_task, respond_to_slot, move_task, hand_back_slot,
   mark_done, send_back_task, reopen_task, move_task_done,
-  delete_task
+  delete_task, update_task
 );
 
 create temp table observed (like expected);
@@ -235,12 +236,20 @@ declare
   v_done_task constant uuid := '00000000-0000-4000-e100-000000000003';
   v_staff constant uuid := '00000000-0000-4000-e000-000000000004';
   v_task_version timestamptz;
+  v_task_slots jsonb;
 begin
   -- Read the fixtures while still `postgres`: `authenticated` can't read
-  -- temp tables, and a non-active caller can't read the task's version.
+  -- temp tables, and a non-active caller can't read the task's version or
+  -- its slots.
   select array_agg(x) into v_callers from callers x;
   select t.updated_at into v_task_version
   from public.tasks t where t.id = v_task;
+  select jsonb_agg(
+           jsonb_build_object('id', a.id, 'role', a.role,
+                              'member_id', a.member_id)
+           order by a.created_at, a.id)
+    into v_task_slots
+  from public.task_assignments a where a.task_id = v_task;
 
   foreach c in array v_callers loop
     perform set_config(
@@ -354,6 +363,19 @@ begin
       raise exception using errcode = 'P0001', message = 'probe.accepted';
     exception when others then
       o.delete_task := case when sqlerrm = 'probe.accepted' then 'ok'
+                            else sqlstate || ' ' || sqlerrm end;
+    end;
+
+    -- Its slots as loaded: every holder but the staff member is inactive,
+    -- and an unchanged slot keeps its member.
+    begin
+      perform public.update_task(
+        v_task, 'Account states edit probe', null,
+        '2026-11-02T00:00:00+08', null, v_task_slots
+      );
+      raise exception using errcode = 'P0001', message = 'probe.accepted';
+    exception when others then
+      o.update_task := case when sqlerrm = 'probe.accepted' then 'ok'
                             else sqlstate || ' ' || sqlerrm end;
     end;
 

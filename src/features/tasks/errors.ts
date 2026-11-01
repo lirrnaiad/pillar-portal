@@ -3,8 +3,8 @@
 // src/features/members/errors.ts).
 //
 // tasks.no_slots and tasks.invalid_slot_member are raised by create_task but
-// never expected here: taskCreateSchema requires at least one slot, and the
-// slot member picker only offers active members (spec-1-5-admin-task-creation.md's
+// never expected from it: taskCreateSchema requires at least one slot, and
+// the slot member picker only offers active members (spec-1-5-admin-task-creation.md's
 // I/O Matrix calls both "backstops the UI never reaches"). A caller who gets
 // past those some other way, or any other database or network failure, maps
 // to the generic tasks.create_failed instead of a raw error code.
@@ -27,6 +27,17 @@
 // page refreshes. send_back_task's tasks.invalid_note is a backstop
 // taskSendBackSchema keeps the UI from reaching, so it maps to
 // tasks.save_failed.
+//
+// update_task raises the same approver codes, tasks.stale when the form
+// holds a slot that is gone (or one appeared while it saved), and
+// tasks.duplicate_slot from its own check (a backstop like create's:
+// taskUpdateSchema's refine catches the pair first). Its
+// tasks.invalid_slot_member means a member the form offered has left since
+// it loaded, so it shows the stale line and the page refreshes. Its
+// tasks.not_allowed is a slot change on a Done task, whose form offers none
+// (the task was marked Done while the form was open): "try again", and the
+// refresh shows its slots read-only. Its tasks.no_slots backstop maps to
+// tasks.save_failed.
 const STALE_COPY =
   "Something changed since you opened this. Review the latest and try again."
 
@@ -40,6 +51,7 @@ export const TASK_ERROR_COPY = {
   "tasks.save_failed": "Couldn't save — try again.",
   "tasks.not_approver": "Only the task's head or a top editor can do that.",
   "tasks.stale": STALE_COPY,
+  "tasks.invalid_slot_member": STALE_COPY,
 } as const
 
 export type TaskErrorCode = keyof typeof TASK_ERROR_COPY

@@ -20,6 +20,7 @@ import {
   taskMoveSchema,
   taskReviewSchema,
   taskSendBackSchema,
+  taskUpdateSchema,
 } from "./schemas"
 import type { SlotState, TaskColumn } from "./status"
 
@@ -54,6 +55,14 @@ export type DeleteTaskState =
   | { ok: true; data: { taskId: string } }
   | ActionError
 
+/**
+ * `newAssignee`: update_task's answer, true when any slot got a new member
+ * (reassigned or added), so the form offers Copy for Messenger.
+ */
+export type UpdateTaskState =
+  | { ok: true; data: { taskId: string; newAssignee: boolean } }
+  | ActionError
+
 // The codes each command raises as `raise exception ... message = '<code>'`
 // and the UI has copy for. Any other message — a code the UI never expects
 // (create_task's tasks.no_slots and tasks.invalid_slot_member backstops), a
@@ -78,6 +87,21 @@ const REVIEW_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
   "tasks.not_found",
   "tasks.not_approver",
   "tasks.stale",
+])
+
+// update_task: the approver's codes, its own repeated-pair check, a member
+// who left while the form was open (tasks.invalid_slot_member) and a slot
+// change on a task marked Done meanwhile (tasks.not_allowed). Only its
+// tasks.no_slots backstop (taskUpdateSchema requires a slot) maps to
+// tasks.save_failed and is recorded.
+const UPDATE_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
+  "auth.not_active",
+  "tasks.not_found",
+  "tasks.not_approver",
+  "tasks.stale",
+  "tasks.duplicate_slot",
+  "tasks.invalid_slot_member",
+  "tasks.not_allowed",
 ])
 
 // task_assignments' own unique(task_id, member_id, role) constraint, not a
@@ -404,4 +428,65 @@ export async function deleteTaskAction(
   // The review queue and Admin home's count.
   revalidatePath("/admin", "layout")
   return { ok: true, data: { taskId } }
+}
+
+/**
+ * Saves the task form in edit mode (AD-3, AD-4): the fields as last-write-
+ * wins (AD-21) and the slots diffed by id. update_task decides whether the
+ * caller is the approver and whether the slots the form holds still exist;
+ * this only parses, converts the PHT due date, calls it, maps the error and
+ * revalidates.
+ */
+export async function updateTaskAction(
+  input: unknown
+): Promise<UpdateTaskState> {
+  const parsed = taskUpdateSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+  const { taskId } = parsed.data
+
+  let dueAt: Date
+  try {
+    dueAt = phtInputToUtc(parsed.data.dueAt)
+  } catch {
+    return { ok: false, code: "tasks.save_failed" }
+  }
+
+  const supabase = await createClient()
+  // As create's: the generated Args type doesn't mark description or
+  // reference_url nullable, though update_task stores a null in either.
+  const args = {
+    task_id: taskId,
+    title: parsed.data.title,
+    description: parsed.data.description,
+    due_at: dueAt.toISOString(),
+    reference_url: parsed.data.referenceUrl,
+    slots: parsed.data.slots.map((slot) => ({
+      ...(slot.id !== undefined ? { id: slot.id } : {}),
+      role: slot.role,
+      member_id: slot.memberId,
+    })),
+  } as Database["public"]["Functions"]["update_task"]["Args"]
+
+  const { data, error } = await supabase.rpc("update_task", args)
+
+  if (error) {
+    return {
+      ok: false,
+      code:
+        error.code === UNIQUE_VIOLATION
+          ? "tasks.duplicate_slot"
+          : mapError(error, UPDATE_ERROR_CODES, "tasks.save_failed", {
+              route: "action updateTaskAction",
+              entityType: "task",
+              entityId: taskId,
+            }),
+    }
+  }
+
+  revalidatePath("/dashboard", "layout")
+  // The review queue and Admin home's count.
+  revalidatePath("/admin", "layout")
+  return { ok: true, data: { taskId, newAssignee: data === true } }
 }

@@ -26,6 +26,53 @@ const slotSchema = z.object({
   memberId: z.uuid(),
 })
 
+// What the create and edit forms share: the fields, and at most 20 slots,
+// at least one. Zod refuses `.omit` on a refined object, so each schema
+// extends these and adds the refines it needs.
+const taskFieldsSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, { message: "Add a title" })
+    .max(TITLE_MAX, { message: `Keep the title under ${TITLE_MAX} characters` }),
+  description: z
+    .string()
+    .max(DESCRIPTION_MAX, {
+      message: `Keep the description under ${DESCRIPTION_MAX} characters`,
+    })
+    .nullable(),
+  dueAt: z
+    .string()
+    .min(1, { message: "Add a due date" })
+    .regex(DATETIME_LOCAL_PATTERN, { message: "Add a due date" }),
+  referenceUrl: z
+    .string()
+    .trim()
+    .max(REFERENCE_URL_MAX, { message: "That link is too long" })
+    .regex(REFERENCE_URL_PATTERN, { message: "Enter a valid link" })
+    .nullable(),
+})
+
+function slotsSchema<T extends z.ZodType>(slot: T) {
+  return z
+    .array(slot)
+    .min(1, { message: "Add at least one slot" })
+    .max(20, { message: "That's too many slots for one task" })
+}
+
+// The same (role, member) twice, which the database refuses too.
+function hasNoRepeatedPair(data: {
+  slots: { role: string; memberId: string }[]
+}) {
+  const pairs = data.slots.map((slot) => `${slot.role}:${slot.memberId}`)
+  return new Set(pairs).size === pairs.length
+}
+
+const REPEATED_PAIR = {
+  message: "The same member already has that role — remove one",
+  path: ["slots"],
+}
+
 /**
  * The admin task-creation form's shape. Mirrors the database limits in
  * supabase/migrations/<ts>_tasks_tasks.sql exactly (title <= 200, description
@@ -38,53 +85,40 @@ const slotSchema = z.object({
  * value here — the owner <select> simply never offers it, so there's no
  * client-side rule to state; tasks_owner_not_writers is the backstop.
  */
-export const taskCreateSchema = z
-  .object({
-    title: z
-      .string()
-      .trim()
-      .min(1, { message: "Add a title" })
-      .max(TITLE_MAX, { message: `Keep the title under ${TITLE_MAX} characters` }),
-    description: z
-      .string()
-      .max(DESCRIPTION_MAX, {
-        message: `Keep the description under ${DESCRIPTION_MAX} characters`,
-      })
-      .nullable(),
+export const taskCreateSchema = taskFieldsSchema
+  .extend({
     owningSectionId: z.string().nullable(),
     owningDeskId: z.string().nullable(),
-    dueAt: z
-      .string()
-      .min(1, { message: "Add a due date" })
-      .regex(DATETIME_LOCAL_PATTERN, { message: "Add a due date" }),
-    referenceUrl: z
-      .string()
-      .trim()
-      .max(REFERENCE_URL_MAX, { message: "That link is too long" })
-      .regex(REFERENCE_URL_PATTERN, { message: "Enter a valid link" })
-      .nullable(),
-    slots: z
-      .array(slotSchema)
-      .min(1, { message: "Add at least one slot" })
-      .max(20, { message: "That's too many slots for one task" }),
+    slots: slotsSchema(slotSchema),
   })
   .refine(
     (data) => Number(data.owningSectionId !== null) + Number(data.owningDeskId !== null) === 1,
     { message: "Choose one owner", path: ["owningSectionId"] }
   )
-  .refine(
-    (data) => {
-      const pairs = data.slots.map((slot) => `${slot.role}:${slot.memberId}`)
-      return new Set(pairs).size === pairs.length
-    },
-    {
-      message: "The same member already has that role — remove one",
-      path: ["slots"],
-    }
-  )
+  .refine(hasNoRepeatedPair, REPEATED_PAIR)
+
+/**
+ * A slot in the edit form: an existing slot carries its id (its role is
+ * fixed), a new one has none.
+ */
+const slotUpdateSchema = slotSchema.extend({ id: z.uuid().optional() })
+
+/**
+ * The task form in edit mode (Story 3.7): the task, the same fields and slot
+ * rules as create, and no owner, which is fixed at creation. update_task
+ * diffs the slots by id; the database refuses a repeated pair too.
+ */
+export const taskUpdateSchema = taskFieldsSchema
+  .extend({
+    taskId: z.uuid(),
+    slots: slotsSchema(slotUpdateSchema),
+  })
+  .refine(hasNoRepeatedPair, REPEATED_PAIR)
 
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>
 export type TaskSlotInput = z.infer<typeof slotSchema>
+export type TaskUpdateInput = z.infer<typeof taskUpdateSchema>
+export type TaskUpdateSlotInput = z.infer<typeof slotUpdateSchema>
 
 // Mirrors assignment_reasons_reason_format (<ts>_tasks_responses_and_moves.sql).
 const REASON_MAX = 280

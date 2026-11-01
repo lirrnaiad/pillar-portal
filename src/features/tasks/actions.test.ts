@@ -33,6 +33,7 @@ import {
   reopenTaskAction,
   respondToSlotAction,
   sendBackTaskAction,
+  updateTaskAction,
 } from "./actions"
 
 const MEMBER_ID = "00000000-0000-4000-8000-000000000001"
@@ -137,6 +138,16 @@ describe("createTaskAction", () => {
 
 const SLOT_ID = "00000000-0000-4000-8000-000000000011"
 const TASK_ID = "00000000-0000-4000-8000-000000000021"
+
+// The edit form's submission: one existing slot.
+const VALID_EDIT = {
+  taskId: TASK_ID,
+  title: "Lay out the spread",
+  description: null,
+  dueAt: "2026-10-31T23:30",
+  referenceUrl: null,
+  slots: [{ id: SLOT_ID, role: "layout_artist", memberId: MEMBER_ID }],
+}
 
 describe("respondToSlotAction", () => {
   it("rejects invalid input without calling the database", async () => {
@@ -286,6 +297,9 @@ describe("error copy", () => {
       "tasks.save_failed": "Couldn't save — try again.",
       "tasks.not_approver": "Only the task's head or a top editor can do that.",
       "tasks.stale":
+        "Something changed since you opened this. Review the latest and try again.",
+      // A member who left while the edit form was open: the stale line.
+      "tasks.invalid_slot_member":
         "Something changed since you opened this. Review the latest and try again.",
     })
   })
@@ -513,6 +527,119 @@ describe("deleteTaskAction", () => {
   )
 })
 
+describe("updateTaskAction", () => {
+  const NEW_MEMBER = "00000000-0000-4000-8000-000000000002"
+  const EDIT_INPUT = {
+    taskId: TASK_ID,
+    title: "  Lay out the spread, v2  ",
+    description: null,
+    dueAt: "2026-10-31T23:30",
+    referenceUrl: "https://example.com/brief",
+    slots: [
+      { id: SLOT_ID, role: "layout_artist", memberId: MEMBER_ID },
+      { role: "writer", memberId: NEW_MEMBER },
+    ],
+  }
+
+  it.each([
+    ["a task id that isn't a UUID", { ...EDIT_INPUT, taskId: "abc" }],
+    ["a blank title", { ...EDIT_INPUT, title: "  " }],
+    ["no slots", { ...EDIT_INPUT, slots: [] }],
+    [
+      "a repeated pair",
+      {
+        ...EDIT_INPUT,
+        slots: [
+          { role: "writer", memberId: NEW_MEMBER },
+          { role: "writer", memberId: NEW_MEMBER },
+        ],
+      },
+    ],
+    ["a due date that can't convert", { ...EDIT_INPUT, dueAt: "2026-02-30T10:00" }],
+  ])("rejects %s without calling the database", async (_name, input) => {
+    const result = await updateTaskAction(input)
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it("calls update_task with the trimmed fields, the PHT due date as a UTC instant and the slots (an id only on an existing one), then revalidates the dashboard and the admin pages", async () => {
+    rpc.mockResolvedValue({ data: false, error: null })
+
+    const result = await updateTaskAction(EDIT_INPUT)
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("update_task", {
+      task_id: TASK_ID,
+      title: "Lay out the spread, v2",
+      description: null,
+      due_at: "2026-10-31T15:30:00.000Z",
+      reference_url: "https://example.com/brief",
+      slots: [
+        { id: SLOT_ID, role: "layout_artist", member_id: MEMBER_ID },
+        { role: "writer", member_id: NEW_MEMBER },
+      ],
+    })
+    expect(rpc.mock.calls[0][1].slots[1]).not.toHaveProperty("id")
+    expect(revalidatePath.mock.calls).toEqual([
+      ["/dashboard", "layout"],
+      ["/admin", "layout"],
+    ])
+    expect(result).toEqual({
+      ok: true,
+      data: { taskId: TASK_ID, newAssignee: false },
+    })
+  })
+
+  it("passes update_task's true through as newAssignee", async () => {
+    rpc.mockResolvedValue({ data: true, error: null })
+
+    const result = await updateTaskAction(EDIT_INPUT)
+
+    expect(result).toEqual({
+      ok: true,
+      data: { taskId: TASK_ID, newAssignee: true },
+    })
+  })
+
+  it.each([
+    ["auth.not_active", "auth.not_active"],
+    ["tasks.not_found", "tasks.not_found"],
+    ["tasks.not_approver", "tasks.not_approver"],
+    ["tasks.stale", "tasks.stale"],
+    ["tasks.duplicate_slot", "tasks.duplicate_slot"],
+    ["tasks.invalid_slot_member", "tasks.invalid_slot_member"],
+    ["tasks.not_allowed", "tasks.not_allowed"],
+    ["tasks.no_slots", "tasks.save_failed"],
+    ["fetch failed", "tasks.save_failed"],
+  ])(
+    "maps the database error %s to %s without revalidating",
+    async (message, code) => {
+      rpc.mockResolvedValue({ data: null, error: { code: "P0001", message } })
+
+      const result = await updateTaskAction(EDIT_INPUT)
+
+      expect(result).toEqual({ ok: false, code })
+      expect(revalidatePath).not.toHaveBeenCalled()
+    }
+  )
+
+  it("maps task_assignments' unique-violation (23505) to tasks.duplicate_slot, as create does, and doesn't record it", async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "task_assignments_task_id_member_id_role_key"',
+      },
+    })
+
+    const result = await updateTaskAction(EDIT_INPUT)
+
+    expect(result).toEqual({ ok: false, code: "tasks.duplicate_slot" })
+    expect(after).not.toHaveBeenCalled()
+  })
+})
+
 describe("recording unexpected errors", () => {
   // A raw database error, as PostgREST returns it.
   const RAW = {
@@ -579,6 +706,11 @@ describe("recording unexpected errors", () => {
         }),
       { route: "action deleteTaskAction", entityType: "task", entityId: TASK_ID },
     ],
+    [
+      "updateTaskAction",
+      () => updateTaskAction({ ...VALID_EDIT, taskId: TASK_ID }),
+      { route: "action updateTaskAction", entityType: "task", entityId: TASK_ID },
+    ],
   ])(
     "%s records an unexpected error after the response, with its action and entity",
     async (_name, call, where) => {
@@ -610,6 +742,20 @@ describe("recording unexpected errors", () => {
       })
     }
   )
+
+  it("records update_task's backstop code tasks.no_slots", async () => {
+    const error = { code: "P0001", message: "tasks.no_slots" }
+    rpc.mockResolvedValue({ data: null, error })
+
+    await updateTaskAction(VALID_EDIT)
+    await runAfter()
+
+    expect(recordErrorEvent).toHaveBeenCalledExactlyOnceWith(error, {
+      route: "action updateTaskAction",
+      entityType: "task",
+      entityId: TASK_ID,
+    })
+  })
 
   it("records send_back_task's backstop code tasks.invalid_note", async () => {
     const error = { code: "P0001", message: "tasks.invalid_note" }
@@ -670,6 +816,21 @@ describe("recording unexpected errors", () => {
         }),
       "tasks.stale",
     ],
+    [
+      "updateTaskAction",
+      () => updateTaskAction(VALID_EDIT),
+      "tasks.duplicate_slot",
+    ],
+    [
+      "updateTaskAction",
+      () => updateTaskAction(VALID_EDIT),
+      "tasks.invalid_slot_member",
+    ],
+    [
+      "updateTaskAction",
+      () => updateTaskAction(VALID_EDIT),
+      "tasks.not_allowed",
+    ],
   ])("%s doesn't record a known code (%s)", async (_name, call, message) => {
     rpc.mockResolvedValue({ data: null, error: { code: "P0001", message } })
 
@@ -711,6 +872,11 @@ describe("recording unexpected errors", () => {
     [
       "deleteTaskAction",
       () => deleteTaskAction({ taskId: TASK_ID, expectedUpdatedAt: null }),
+    ],
+    ["updateTaskAction", () => updateTaskAction({ ...VALID_EDIT, slots: [] })],
+    [
+      "updateTaskAction (a due date that can't convert)",
+      () => updateTaskAction({ ...VALID_EDIT, dueAt: "2026-02-30T10:00" }),
     ],
   ])("%s doesn't record a parse failure", async (_name, call) => {
     await call()

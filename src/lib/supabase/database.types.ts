@@ -599,6 +599,17 @@ export type Database = {
           task_id: string
         }[]
       }
+      update_task: {
+        Args: {
+          description: string
+          due_at: string
+          reference_url: string
+          slots: Json
+          task_id: string
+          title: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       job_status: "ok" | "failed" | "skipped"

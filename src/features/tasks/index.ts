@@ -9,6 +9,7 @@ export {
   reopenTaskAction,
   respondToSlotAction,
   sendBackTaskAction,
+  updateTaskAction,
 } from "./actions"
 export type {
   CreateTaskState,
@@ -19,6 +20,7 @@ export type {
   ReopenTaskState,
   RespondToSlotState,
   SendBackTaskState,
+  UpdateTaskState,
 } from "./actions"
 export {
   BOARD_ROW_HEIGHT,
@@ -53,6 +55,7 @@ export { TaskBoard } from "./components/task-board"
 export { TaskChangesRefresher } from "./components/task-changes-refresher"
 export { TaskDetailView } from "./components/task-detail-view"
 export { TaskForm } from "./components/task-form"
+export { TaskNotFound } from "./components/task-not-found"
 export { WhatsMineTasks } from "./components/whats-mine-tasks"
 export { TASK_ERROR_COPY, taskErrorMessage } from "./errors"
 export type { TaskErrorCode } from "./errors"
@@ -81,6 +84,8 @@ export type {
   TaskDetailSlot,
   TaskRevisionNote,
 } from "./queries/task-detail"
+export { getTaskEdit } from "./queries/task-edit"
+export type { TaskEdit, TaskEditSlot } from "./queries/task-edit"
 export { getTaskFormOptions } from "./queries/task-form"
 export type {
   SlotMemberOption,
@@ -99,6 +104,7 @@ export {
   taskMoveSchema,
   taskReviewSchema,
   taskSendBackSchema,
+  taskUpdateSchema,
 } from "./schemas"
 export type {
   SlotHandBackInput,
@@ -109,7 +115,10 @@ export type {
   TaskReviewInput,
   TaskSendBackInput,
   TaskSlotInput,
+  TaskUpdateInput,
+  TaskUpdateSlotInput,
 } from "./schemas"
+export { taskEditKey } from "./task-edit-key"
 export {
   isTaskOverdue,
   SENT_BACK_LABEL,

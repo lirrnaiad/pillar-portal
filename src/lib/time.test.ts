@@ -11,6 +11,7 @@ import {
   phtMonthLabel,
   phtMonthOf,
   shiftMonth,
+  utcToPhtInput,
 } from "./time"
 
 // Every test here must pass whatever the process's own timezone is, so every
@@ -93,6 +94,40 @@ describe.each(ZONES)("with TZ=%s", (zone, januaryOffset) => {
     it("round-trips with phtInputToUtc across the month boundary", () => {
       const utc = phtInputToUtc("2026-10-31T23:30")
       expect(formatInPht(utc, "yyyy-MM-dd'T'HH:mm")).toBe("2026-10-31T23:30")
+    })
+  })
+
+  describe("utcToPhtInput", () => {
+    it("gives the datetime-local value of the instant's PHT wall-clock time", () => {
+      expect(utcToPhtInput("2026-11-01T01:00:00+00:00")).toBe(
+        "2026-11-01T09:00"
+      )
+    })
+
+    // 15:30Z on Oct 31 is 11:30 PM PHT on Oct 31; 16:30Z is already Nov 1.
+    it("keeps the PHT date across the UTC day boundary", () => {
+      expect(utcToPhtInput(new Date("2026-10-31T15:30:00Z"))).toBe(
+        "2026-10-31T23:30"
+      )
+      expect(utcToPhtInput("2026-10-31T16:30:00Z")).toBe("2026-11-01T00:30")
+    })
+
+    it.each(["2026-11-01T09:00", "2026-10-31T23:30", "2026-01-01T00:00"])(
+      "round-trips %j with phtInputToUtc",
+      (value) => {
+        expect(utcToPhtInput(phtInputToUtc(value))).toBe(value)
+      }
+    )
+
+    it("round-trips a stored instant (PostgREST's string, microseconds and all) to the same minute", () => {
+      const stored = "2026-10-31T15:30:00.000000+00:00"
+      expect(phtInputToUtc(utcToPhtInput(stored)).toISOString()).toBe(
+        "2026-10-31T15:30:00.000Z"
+      )
+    })
+
+    it("drops seconds, as the input shows none", () => {
+      expect(utcToPhtInput("2026-10-31T15:30:45Z")).toBe("2026-10-31T23:30")
     })
   })
 

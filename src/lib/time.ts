@@ -61,6 +61,16 @@ export function formatInPht(
   return format(new TZDate(instant.getTime(), PHT_TIME_ZONE), formatStr)
 }
 
+/**
+ * The reverse of `phtInputToUtc`: a UTC instant (a stored `due_at`, say) as
+ * the `<input type="datetime-local">` value (`YYYY-MM-DDTHH:mm`) of its
+ * Philippine wall-clock time, so an edit form opens on the time it saved.
+ * Seconds are dropped, as the input shows none.
+ */
+export function utcToPhtInput(date: Date | string | number): string {
+  return formatInPht(date, "yyyy-MM-dd'T'HH:mm")
+}
+
 // The Planner's calendar math. A month is `YYYY-MM` and a day `YYYY-MM-DD`,
 // both Manila calendar dates. Nothing is built with `new Date(y, m, d)` (the
 // process's own timezone), so the answers are the same on a server in UTC, a

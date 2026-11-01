@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState, type MouseEvent } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 import {
@@ -29,8 +30,8 @@ const AFTER_DELETE_HREF = "/admin/tasks?notice=task-deleted"
 
 /**
  * The approver's manage row on Task detail, under TaskReview, shown only
- * while task_capabilities offers `canManage` (AD-4): **Delete** (Story 3.7
- * puts **Edit** before it).
+ * while task_capabilities offers `canManage` (AD-4): **Edit**, a link to the
+ * task form in edit mode, then **Delete**.
  *
  * Delete asks first. The confirmation passes the version the page was
  * rendered from (`expectedUpdatedAt`, AD-21), so a task that changed since
@@ -101,6 +102,9 @@ export function TaskManage({
       {canManage && (
         <div className="mt-3 flex flex-wrap gap-3">
           <KeepFocusOnTarget targetId={focusTargetId}>
+            <Button asChild variant="outline" className="min-h-11">
+              <Link href={`/admin/tasks/${taskId}/edit`}>Edit</Link>
+            </Button>
             <AlertDialogTrigger asChild>
               <Button
                 ref={triggerRef}

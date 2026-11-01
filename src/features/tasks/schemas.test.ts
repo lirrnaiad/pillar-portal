@@ -16,6 +16,7 @@ const {
   taskDeleteSchema,
   taskReviewSchema,
   taskSendBackSchema,
+  taskUpdateSchema,
 } = await import("./schemas")
 
 const VALID = {
@@ -335,5 +336,131 @@ describe("taskDeleteSchema", () => {
         expectedUpdatedAt: "2026-10-30T02:15:42+00:00",
       }).success
     ).toBe(false)
+  })
+})
+
+describe("taskUpdateSchema", () => {
+  const MEMBER = "00000000-0000-4000-8000-000000000001"
+  const OTHER = "00000000-0000-4000-8000-000000000002"
+  const EDIT = {
+    taskId: TASK_ID,
+    title: "Lay out the spread",
+    description: null,
+    dueAt: "2026-10-31T23:30",
+    referenceUrl: null,
+    slots: [
+      { id: SLOT_ID, role: "layout_artist" as const, memberId: MEMBER },
+      { role: "writer" as const, memberId: OTHER },
+    ],
+  }
+
+  function updateIssues(input: unknown) {
+    const result = taskUpdateSchema.safeParse(input)
+    return result.success ? [] : result.error.issues
+  }
+
+  it("accepts the task, its fields, and slots with an id (existing) or without (new)", () => {
+    expect(taskUpdateSchema.parse(EDIT)).toEqual(EDIT)
+  })
+
+  it("has no owner: one passed along is dropped", () => {
+    expect(
+      taskUpdateSchema.parse({
+        ...EDIT,
+        owningSectionId: "news",
+        owningDeskId: null,
+      })
+    ).toEqual(EDIT)
+  })
+
+  it("trims the title and the reference link, as create does", () => {
+    const parsed = taskUpdateSchema.parse({
+      ...EDIT,
+      title: "  Lay out the spread  ",
+      referenceUrl: " https://example.com/brief ",
+    })
+    expect(parsed.title).toBe("Lay out the spread")
+    expect(parsed.referenceUrl).toBe("https://example.com/brief")
+  })
+
+  it.each([
+    ["a task id that isn't a UUID", { taskId: "abc" }, "taskId"],
+    ["no task id", { taskId: undefined }, "taskId"],
+    ["a blank title", { title: "   " }, "title"],
+    ["a title over 200 characters", { title: "x".repeat(201) }, "title"],
+    [
+      "a description over 5000 characters",
+      { description: "x".repeat(5001) },
+      "description",
+    ],
+    ["a malformed due date", { dueAt: "2026-10-31" }, "dueAt"],
+    ["a malformed reference link", { referenceUrl: "not-a-url" }, "referenceUrl"],
+    ["no slots", { slots: [] }, "slots"],
+    [
+      "a slot id that isn't a UUID",
+      { slots: [{ id: "abc", role: "writer", memberId: MEMBER }] },
+      "slots.0.id",
+    ],
+    [
+      "a slot with an invalid role",
+      { slots: [{ id: SLOT_ID, role: "editor", memberId: MEMBER }] },
+      "slots.0.role",
+    ],
+    [
+      "a slot whose memberId isn't a UUID",
+      { slots: [{ role: "writer", memberId: "" }] },
+      "slots.0.memberId",
+    ],
+  ])("refuses %s, as create does", (_name, change, path) => {
+    expect(
+      updateIssues({ ...EDIT, ...change }).some(
+        (issue) => issue.path.join(".") === path
+      )
+    ).toBe(true)
+  })
+
+  it.each([
+    [
+      "an existing slot and a new one",
+      [
+        { id: SLOT_ID, role: "writer", memberId: MEMBER },
+        { role: "writer", memberId: MEMBER },
+      ],
+    ],
+    [
+      "two new slots",
+      [
+        { role: "writer", memberId: MEMBER },
+        { role: "writer", memberId: MEMBER },
+      ],
+    ],
+  ])(
+    "refuses %s with the same role and member, inline on the slots",
+    (_name, slots) => {
+      expect(
+        updateIssues({ ...EDIT, slots }).some(
+          (issue) =>
+            issue.path.join(".") === "slots" &&
+            issue.message ===
+              "The same member already has that role — remove one"
+        )
+      ).toBe(true)
+    }
+  )
+
+  it("accepts two same-role slots trading members", () => {
+    expect(
+      taskUpdateSchema.safeParse({
+        ...EDIT,
+        slots: [
+          { id: SLOT_ID, role: "writer", memberId: OTHER },
+          {
+            id: "00000000-0000-4000-8000-000000000012",
+            role: "writer",
+            memberId: MEMBER,
+          },
+        ],
+      }).success
+    ).toBe(true)
   })
 })
