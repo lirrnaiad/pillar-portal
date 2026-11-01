@@ -83,3 +83,10 @@ authenticated public.delete_task(uuid, timestamp with time zone)
 # tasks_edit: the approver's edit (private.reassign_slot_member, the reassign
 # branch it shares with reassign_slot, has no grant: only a command calls it)
 authenticated public.update_task(uuid, text, text, timestamp with time zone, text, jsonb)
+
+# tasks_reassign: the approver's reassign of one slot, and the picker's load
+# (run with the caller's rights over member_directory and private.open_slots;
+# the replaced update_task and the recreated task_capabilities keep the grants
+# listed above)
+authenticated public.reassign_slot(uuid, uuid, timestamp with time zone)
+authenticated public.member_open_slot_counts()

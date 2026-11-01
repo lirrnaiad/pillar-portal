@@ -30,6 +30,7 @@ import {
   handBackSlotAction,
   markDoneAction,
   moveTaskAction,
+  reassignSlotAction,
   reopenTaskAction,
   respondToSlotAction,
   sendBackTaskAction,
@@ -139,14 +140,28 @@ describe("createTaskAction", () => {
 const SLOT_ID = "00000000-0000-4000-8000-000000000011"
 const TASK_ID = "00000000-0000-4000-8000-000000000021"
 
-// The edit form's submission: one existing slot.
+// The edit form's submission: one existing slot, with the member it loaded.
 const VALID_EDIT = {
   taskId: TASK_ID,
   title: "Lay out the spread",
   description: null,
   dueAt: "2026-10-31T23:30",
   referenceUrl: null,
-  slots: [{ id: SLOT_ID, role: "layout_artist", memberId: MEMBER_ID }],
+  slots: [
+    {
+      id: SLOT_ID,
+      loadedMemberId: MEMBER_ID,
+      role: "layout_artist",
+      memberId: MEMBER_ID,
+    },
+  ],
+}
+
+// The reassign picker's submission, the version as PostgREST returns it.
+const VALID_REASSIGN = {
+  slotId: SLOT_ID,
+  memberId: MEMBER_ID,
+  expectedUpdatedAt: "2026-10-30T02:15:42.123456+00:00",
 }
 
 describe("respondToSlotAction", () => {
@@ -536,13 +551,34 @@ describe("updateTaskAction", () => {
     dueAt: "2026-10-31T23:30",
     referenceUrl: "https://example.com/brief",
     slots: [
-      { id: SLOT_ID, role: "layout_artist", memberId: MEMBER_ID },
+      {
+        id: SLOT_ID,
+        loadedMemberId: MEMBER_ID,
+        role: "layout_artist",
+        memberId: NEW_MEMBER,
+      },
       { role: "writer", memberId: NEW_MEMBER },
     ],
   }
 
   it.each([
     ["a task id that isn't a UUID", { ...EDIT_INPUT, taskId: "abc" }],
+    [
+      "an existing slot without its loaded member",
+      {
+        ...EDIT_INPUT,
+        slots: [{ id: SLOT_ID, role: "layout_artist", memberId: MEMBER_ID }],
+      },
+    ],
+    [
+      "a new slot with a loaded member",
+      {
+        ...EDIT_INPUT,
+        slots: [
+          { loadedMemberId: MEMBER_ID, role: "writer", memberId: NEW_MEMBER },
+        ],
+      },
+    ],
     ["a blank title", { ...EDIT_INPUT, title: "  " }],
     ["no slots", { ...EDIT_INPUT, slots: [] }],
     [
@@ -563,7 +599,7 @@ describe("updateTaskAction", () => {
     expect(createClient).not.toHaveBeenCalled()
   })
 
-  it("calls update_task with the trimmed fields, the PHT due date as a UTC instant and the slots (an id only on an existing one), then revalidates the dashboard and the admin pages", async () => {
+  it("calls update_task with the trimmed fields, the PHT due date as a UTC instant and the slots (an id and the loaded member only on an existing one), then revalidates the dashboard and the admin pages", async () => {
     rpc.mockResolvedValue({ data: false, error: null })
 
     const result = await updateTaskAction(EDIT_INPUT)
@@ -575,11 +611,19 @@ describe("updateTaskAction", () => {
       due_at: "2026-10-31T15:30:00.000Z",
       reference_url: "https://example.com/brief",
       slots: [
-        { id: SLOT_ID, role: "layout_artist", member_id: MEMBER_ID },
+        {
+          id: SLOT_ID,
+          loaded_member_id: MEMBER_ID,
+          role: "layout_artist",
+          member_id: NEW_MEMBER,
+        },
         { role: "writer", member_id: NEW_MEMBER },
       ],
     })
     expect(rpc.mock.calls[0][1].slots[1]).not.toHaveProperty("id")
+    expect(rpc.mock.calls[0][1].slots[1]).not.toHaveProperty(
+      "loaded_member_id"
+    )
     expect(revalidatePath.mock.calls).toEqual([
       ["/dashboard", "layout"],
       ["/admin", "layout"],
@@ -634,6 +678,83 @@ describe("updateTaskAction", () => {
     })
 
     const result = await updateTaskAction(EDIT_INPUT)
+
+    expect(result).toEqual({ ok: false, code: "tasks.duplicate_slot" })
+    expect(after).not.toHaveBeenCalled()
+  })
+})
+
+describe("reassignSlotAction", () => {
+  it.each([
+    ["a slot id that isn't a UUID", { ...VALID_REASSIGN, slotId: "abc" }],
+    ["no member", { ...VALID_REASSIGN, memberId: undefined }],
+    ["a member id that isn't a UUID", { ...VALID_REASSIGN, memberId: "" }],
+    ["no version", { slotId: SLOT_ID, memberId: MEMBER_ID }],
+    [
+      "a version that isn't a timestamp",
+      { ...VALID_REASSIGN, expectedUpdatedAt: "yesterday" },
+    ],
+    [
+      "a version without an offset",
+      { ...VALID_REASSIGN, expectedUpdatedAt: "2026-10-30T02:15:42.123456" },
+    ],
+  ])("rejects %s without calling the database", async (_name, input) => {
+    const result = await reassignSlotAction(input)
+
+    expect(result).toEqual({ ok: false, code: "tasks.save_failed" })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it("calls reassign_slot once with the slot, the member and the version exactly as given, then revalidates the dashboard and the admin pages and returns the slot id", async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+
+    const result = await reassignSlotAction(VALID_REASSIGN)
+
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("reassign_slot", {
+      slot_id: SLOT_ID,
+      member_id: MEMBER_ID,
+      expected_updated_at: "2026-10-30T02:15:42.123456+00:00",
+    })
+    expect(revalidatePath.mock.calls).toEqual([
+      ["/dashboard", "layout"],
+      ["/admin", "layout"],
+    ])
+    expect(result).toEqual({ ok: true, data: { slotId: SLOT_ID } })
+  })
+
+  it.each([
+    ["auth.not_active", "auth.not_active"],
+    ["tasks.not_found", "tasks.not_found"],
+    ["tasks.not_approver", "tasks.not_approver"],
+    ["tasks.not_allowed", "tasks.not_allowed"],
+    ["tasks.stale", "tasks.stale"],
+    ["tasks.invalid_slot_member", "tasks.invalid_slot_member"],
+    ["tasks.duplicate_slot", "tasks.duplicate_slot"],
+    ["tasks.no_slots", "tasks.save_failed"],
+    ["fetch failed", "tasks.save_failed"],
+  ])(
+    "maps the database error %s to %s without revalidating",
+    async (message, code) => {
+      rpc.mockResolvedValue({ data: null, error: { code: "P0001", message } })
+
+      const result = await reassignSlotAction(VALID_REASSIGN)
+
+      expect(result).toEqual({ ok: false, code })
+      expect(revalidatePath).not.toHaveBeenCalled()
+    }
+  )
+
+  it("maps task_assignments' unique-violation (23505) to tasks.duplicate_slot and doesn't record it", async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "task_assignments_task_id_member_id_role_key"',
+      },
+    })
+
+    const result = await reassignSlotAction(VALID_REASSIGN)
 
     expect(result).toEqual({ ok: false, code: "tasks.duplicate_slot" })
     expect(after).not.toHaveBeenCalled()
@@ -710,6 +831,15 @@ describe("recording unexpected errors", () => {
       "updateTaskAction",
       () => updateTaskAction({ ...VALID_EDIT, taskId: TASK_ID }),
       { route: "action updateTaskAction", entityType: "task", entityId: TASK_ID },
+    ],
+    [
+      "reassignSlotAction",
+      () => reassignSlotAction(VALID_REASSIGN),
+      {
+        route: "action reassignSlotAction",
+        entityType: "task_assignment",
+        entityId: SLOT_ID,
+      },
     ],
   ])(
     "%s records an unexpected error after the response, with its action and entity",
@@ -840,6 +970,23 @@ describe("recording unexpected errors", () => {
     expect(recordErrorEvent).not.toHaveBeenCalled()
   })
 
+  it.each([
+    "auth.not_active",
+    "tasks.not_found",
+    "tasks.not_approver",
+    "tasks.not_allowed",
+    "tasks.stale",
+    "tasks.invalid_slot_member",
+    "tasks.duplicate_slot",
+  ])("reassignSlotAction doesn't record a known code (%s)", async (message) => {
+    rpc.mockResolvedValue({ data: null, error: { code: "P0001", message } })
+
+    await reassignSlotAction(VALID_REASSIGN)
+
+    expect(after).not.toHaveBeenCalled()
+    expect(recordErrorEvent).not.toHaveBeenCalled()
+  })
+
   it("doesn't record task_assignments' duplicate pair (23505), which has its own copy", async () => {
     rpc.mockResolvedValue({
       data: null,
@@ -877,6 +1024,10 @@ describe("recording unexpected errors", () => {
     [
       "updateTaskAction (a due date that can't convert)",
       () => updateTaskAction({ ...VALID_EDIT, dueAt: "2026-02-30T10:00" }),
+    ],
+    [
+      "reassignSlotAction",
+      () => reassignSlotAction({ ...VALID_REASSIGN, expectedUpdatedAt: null }),
     ],
   ])("%s doesn't record a parse failure", async (_name, call) => {
     await call()

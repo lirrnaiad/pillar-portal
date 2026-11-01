@@ -37,7 +37,15 @@
 // tasks.not_allowed is a slot change on a Done task, whose form offers none
 // (the task was marked Done while the form was open): "try again", and the
 // refresh shows its slots read-only. Its tasks.no_slots backstop maps to
-// tasks.save_failed.
+// tasks.save_failed. Since Story 3.3 it also raises tasks.stale when a slot
+// the form loaded has another member now.
+//
+// reassign_slot raises the approver codes; tasks.stale when the slot changed
+// since the picker loaded; tasks.invalid_slot_member (the stale line) when
+// the member left meanwhile; tasks.not_allowed when the task was marked Done
+// meanwhile ("try again", and the refresh takes Reassign away); and
+// tasks.duplicate_slot, which the picker shows with the picked member's name
+// instead of this copy.
 const STALE_COPY =
   "Something changed since you opened this. Review the latest and try again."
 

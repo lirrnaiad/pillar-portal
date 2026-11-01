@@ -45,12 +45,7 @@ import {
   type UpdateTaskState,
 } from "../actions"
 import { taskErrorMessage, type TaskErrorCode } from "../errors"
-import {
-  buildMessengerMessage,
-  copyText,
-  MESSENGER_COPIED,
-  MESSENGER_HINT,
-} from "../messenger"
+import { buildMessengerMessage } from "../messenger"
 import type { TaskEdit, TaskEditSlot } from "../queries/task-edit"
 import type { SlotMemberOption, TaskFormOptions } from "../queries/task-form"
 import {
@@ -60,13 +55,15 @@ import {
   type TaskCreateInput,
   type TaskUpdateSlotInput,
 } from "../schemas"
+import { copyForMessengerAction } from "./messenger-toast"
 
 const EMPTY_SLOT = { role: PRODUCTION_ROLES[0], memberId: "" } as const
 
 /**
- * The form's values in either mode. In edit mode `taskId` and each existing
- * slot's `id` ride along unseen; the owner stays null, since edit mode never
- * shows or sends it.
+ * The form's values in either mode. In edit mode `taskId`, and each existing
+ * slot's `id` and `loadedMemberId` (the member it loaded with, so a save over
+ * a reassignment since is refused as stale), ride along unseen; the owner
+ * stays null, since edit mode never shows or sends it.
  */
 type TaskFormValues = Omit<TaskCreateInput, "slots"> & {
   taskId?: string
@@ -101,6 +98,7 @@ function editValues(task: TaskEdit): TaskFormValues {
     referenceUrl: task.referenceUrl,
     slots: task.slots.map((slot) => ({
       id: slot.id,
+      loadedMemberId: slot.memberId,
       role: slot.role,
       memberId: slot.memberId,
     })),
@@ -157,23 +155,6 @@ function messengerMessage(
     )
   } catch {
     return null
-  }
-}
-
-function copyForMessengerAction(text: string) {
-  return {
-    action: {
-      label: "Copy for Messenger",
-      onClick: async () => {
-        if (await copyText(text)) toast.success(MESSENGER_COPIED)
-        else
-          toast(MESSENGER_HINT, {
-            description: text,
-            duration: Infinity,
-            closeButton: true,
-          })
-      },
-    },
   }
 }
 

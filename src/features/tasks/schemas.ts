@@ -99,9 +99,16 @@ export const taskCreateSchema = taskFieldsSchema
 
 /**
  * A slot in the edit form: an existing slot carries its id (its role is
- * fixed), a new one has none.
+ * fixed) and `loadedMemberId`, the member the form loaded it with, so
+ * update_task can refuse a save made over a reassignment since (Story 3.3);
+ * a new one has neither.
  */
-const slotUpdateSchema = slotSchema.extend({ id: z.uuid().optional() })
+const slotUpdateSchema = slotSchema
+  .extend({ id: z.uuid().optional(), loadedMemberId: z.uuid().optional() })
+  .refine(
+    (slot) => (slot.id === undefined) === (slot.loadedMemberId === undefined),
+    { path: ["loadedMemberId"] }
+  )
 
 /**
  * The task form in edit mode (Story 3.7): the task, the same fields and slot
@@ -189,9 +196,21 @@ export const taskDeleteSchema = z.object({
   expectedUpdatedAt: z.iso.datetime({ offset: true }),
 })
 
+/**
+ * Reassign (Story 3.3): the slot, the member it goes to, and the slot's
+ * version (`updated_at`) the picker was rendered from (AD-21), kept as the
+ * string PostgREST returned for the same reason as taskDeleteSchema's.
+ */
+export const slotReassignSchema = z.object({
+  slotId: z.uuid(),
+  memberId: z.uuid(),
+  expectedUpdatedAt: z.iso.datetime({ offset: true }),
+})
+
 export type SlotRespondInput = z.input<typeof slotRespondSchema>
 export type SlotHandBackInput = z.input<typeof slotHandBackSchema>
 export type TaskMoveInput = z.input<typeof taskMoveSchema>
 export type TaskReviewInput = z.input<typeof taskReviewSchema>
 export type TaskSendBackInput = z.input<typeof taskSendBackSchema>
 export type TaskDeleteInput = z.input<typeof taskDeleteSchema>
+export type SlotReassignInput = z.input<typeof slotReassignSchema>

@@ -1,7 +1,12 @@
 import type { Metadata } from "next"
 
 import { requireActiveMember } from "@/features/members"
-import { getTaskDetail, TaskDetailView, TaskNotFound } from "@/features/tasks"
+import {
+  getReassignOptions,
+  getTaskDetail,
+  TaskDetailView,
+  TaskNotFound,
+} from "@/features/tasks"
 
 export const metadata: Metadata = {
   title: "Task · The Pillar Portal",
@@ -10,7 +15,8 @@ export const metadata: Metadata = {
 // Task detail, where a Messenger link lands (spec-1-6). The state check comes
 // first. A malformed id, a missing task and one the caller can't read all
 // look the same: getTaskDetail returns null for each, and RLS and the
-// commands decide everything else.
+// commands decide everything else. The reassign picker's members are read
+// only when task_capabilities offers Reassign.
 export default async function TaskPage({
   params,
 }: PageProps<"/dashboard/tasks/[id]">) {
@@ -20,5 +26,9 @@ export default async function TaskPage({
 
   if (!task) return <TaskNotFound />
 
-  return <TaskDetailView task={task} />
+  const reassignOptions = task.canReassign
+    ? await getReassignOptions()
+    : undefined
+
+  return <TaskDetailView task={task} reassignOptions={reassignOptions} />
 }

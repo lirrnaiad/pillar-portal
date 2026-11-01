@@ -12,7 +12,9 @@
 -- shared op_id, the return value, the helper on a missing slot, and the
 -- pins (definer, owner, search_path, the lock order and the stale guard on a
 -- slot added between the two locks, the helper's shape, the constraint's
--- mode).
+-- mode). Since Story 3.3 each existing slot carries the member the form
+-- loaded (`loaded_member_id`): a mismatch or a missing one is tasks.stale,
+-- and so is a save from a form loaded before a reassign_slot.
 --
 -- Fixtures follow delete.test.sql: auth users, tasks and slots are created
 -- here (tasks and slots inserted directly as `postgres`, so a test can start
@@ -27,7 +29,7 @@ begin;
 set local role postgres;
 set local search_path = "$user", public, extensions;
 
-select plan(68);
+select plan(71);
 
 -- Fixtures.
 
@@ -92,17 +94,24 @@ language sql as $$
           '00000000-0000-4000-a000-000000000004', p_action)
 $$;
 
--- One element of update_task's `slots`: no `id` key for a new row.
+-- One element of update_task's `slots`: no `id` key for a new row. An
+-- existing row carries `loaded_member_id`, the slot's stored member when this
+-- runs (always as `postgres`, so it reads every slot), as the edit form sends
+-- the member it loaded; null for an id that names no slot.
 create function pg_temp.slot(p_id uuid, p_role text, p_member uuid)
 returns jsonb
 language sql as $$
   select case
     when p_id is null then jsonb_build_object('role', p_role, 'member_id', p_member)
-    else jsonb_build_object('id', p_id, 'role', p_role, 'member_id', p_member)
+    else jsonb_build_object(
+      'id', p_id, 'role', p_role, 'member_id', p_member,
+      'loaded_member_id',
+      (select a.member_id from public.task_assignments a where a.id = p_id))
   end
 $$;
 
--- A task's slots exactly as the edit form loads them, in creation order.
+-- A task's slots exactly as the edit form loads them, in creation order,
+-- each with its stored member as the loaded one.
 create function pg_temp.loaded_slots(p_task uuid)
 returns jsonb
 language sql as $$
@@ -206,6 +215,13 @@ values ('00000000-0000-4000-c000-000000000081', 'Busy');
 -- assignee's On it slot c91.
 select pg_temp.new_task('00000000-0000-4000-b000-000000000009', null, 'layout', 'to_do');
 select pg_temp.new_slot('00000000-0000-4000-c000-000000000091', '00000000-0000-4000-b000-000000000009', '00000000-0000-4000-a000-000000000002', 'layout_artist', 'on_it');
+
+-- b10, an edit form open while reassign_slot gives a slot away: Layout, To
+-- Do, the assignee's On it slot c101 and the staff writer's awaiting slot
+-- c102.
+select pg_temp.new_task('00000000-0000-4000-b000-000000000010', null, 'layout', 'to_do');
+select pg_temp.new_slot('00000000-0000-4000-c000-000000000101', '00000000-0000-4000-b000-000000000010', '00000000-0000-4000-a000-000000000002', 'layout_artist', 'on_it');
+select pg_temp.new_slot('00000000-0000-4000-c000-000000000102', '00000000-0000-4000-b000-000000000010', '00000000-0000-4000-a000-000000000003', 'writer', 'awaiting_response');
 
 -- Run update_task, or a query returning one value, as the given caller (via
 -- the request.jwt.claims GUC, as RLS and private.current_member_id() read
@@ -1053,6 +1069,13 @@ cross join lateral (values
   ('an unknown slot id',
    l.loaded || jsonb_build_array(pg_temp.slot('00000000-0000-4000-c000-0000000000ff', 'writer', '00000000-0000-4000-a000-000000000003')),
    'tasks.stale'),
+  ('a loaded member that isn''t the stored one',
+   jsonb_set(l.loaded, '{0,loaded_member_id}', to_jsonb('00000000-0000-4000-a000-000000000003'::text)),
+   'tasks.stale'),
+  ('an existing slot without its loaded member',
+   l.loaded #- '{0,loaded_member_id}', 'tasks.stale'),
+  ('an existing slot with a null loaded member',
+   jsonb_set(l.loaded, '{1,loaded_member_id}', 'null'::jsonb), 'tasks.stale'),
   ('a slot changed to a deactivated member',
    jsonb_set(l.loaded, '{0,member_id}', to_jsonb('00000000-0000-4000-a000-000000000013'::text)),
    'tasks.invalid_slot_member'),
@@ -1118,7 +1141,7 @@ $$;
 select set_eq(
   $$ select * from refusals_observed $$,
   $$ select label, 'P0001 ' || code from refusals $$,
-  'every malformed list, stale id, inactive new member and repeated pair is refused with its code'
+  'every malformed list, stale id or loaded member, inactive new member and repeated pair is refused with its code'
 );
 
 select results_eq(
@@ -1196,7 +1219,52 @@ select throws_ok(
   'a deactivated caller gets auth.not_active'
 );
 
--- The helper on its own, as reassign_slot (Story 3.3) will call it: the same
+-- A form loaded before reassign_slot gave c101 to the second staff writer
+-- still holds the assignee as c101's member. Saving it would silently take
+-- the slot back, so it is tasks.stale, and writes nothing.
+
+create temp table b10_form as
+select pg_temp.loaded_slots('00000000-0000-4000-b000-000000000010') as slots;
+
+select lives_ok(
+  format(
+    $f$ select pg_temp.query_as(%L,
+          $q$ select 'reassigned' from (select public.reassign_slot(%L, %L, %L)) as r $q$) $f$,
+    '00000000-0000-4000-a000-000000000004',
+    '00000000-0000-4000-c000-000000000101',
+    '00000000-0000-4000-a000-000000000012',
+    (select updated_at from public.task_assignments
+     where id = '00000000-0000-4000-c000-000000000101')
+  ),
+  'reassign_slot gives c101 to the second staff writer while the form is open'
+);
+
+select throws_ok(
+  format(
+    'select pg_temp.edit_as(%L, %L, %L, %L::jsonb)',
+    '00000000-0000-4000-a000-000000000004',
+    '00000000-0000-4000-b000-000000000010',
+    'Title from the old form',
+    (select slots from b10_form)
+  ),
+  'P0001', 'tasks.stale',
+  'saving the form loaded before the reassign, with the old member, gets tasks.stale'
+);
+
+select results_eq(
+  $$ select t.title,
+            (select array_agg(a.id::text || ':' || a.member_id::text || ':' || a.state::text
+                              order by a.id)
+             from public.task_assignments a where a.task_id = t.id)
+     from public.tasks t
+     where t.id = '00000000-0000-4000-b000-000000000010' $$,
+  $$ values ('Fixture task 00000000-0000-4000-b000-000000000010'::text,
+             array['00000000-0000-4000-c000-000000000101:00000000-0000-4000-a000-000000000012:awaiting_response',
+                   '00000000-0000-4000-c000-000000000102:00000000-0000-4000-a000-000000000003:awaiting_response']) $$,
+  'and writes nothing: the title stays and c101 keeps its new member'
+);
+
+-- The helper on its own, as reassign_slot (Story 3.3) calls it: the same
 -- member resets the slot.
 
 select lives_ok(
