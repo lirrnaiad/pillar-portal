@@ -18,10 +18,16 @@ async function axeViolations(node: Element) {
   return results.violations
 }
 
-const assignee = (n: number, name: string, initials: string) => ({
+const assignee = (
+  n: number,
+  name: string,
+  initials: string,
+  handedBack = false
+) => ({
   id: `00000000-0000-4000-8000-00000000000${n}`,
   name,
   initials,
+  handedBack,
 })
 
 const TASK: TaskCardData = {
@@ -153,6 +159,43 @@ describe("TaskCard", () => {
     ).toHaveClass("sr-only")
   })
 
+  it("dims the avatar of an assignee who handed back every slot, through the DESIGN.md token, and marks them in the names read out", () => {
+    const assignees = [
+      assignee(1, "Editor-in-Chief", "EC", true),
+      assignee(2, "Staff Layout Artist", "SL"),
+    ]
+    render(<TaskCard task={{ ...TASK, assignees }} />)
+
+    const dimmed = screen.getByText("EC").closest("[data-slot=avatar]")
+    expect(dimmed).toHaveClass("opacity-(--avatar-handed-back-opacity)")
+    const plain = screen.getByText("SL").closest("[data-slot=avatar]")
+    expect(plain).not.toHaveClass("opacity-(--avatar-handed-back-opacity)")
+    // Dimmed, never hidden.
+    expect(screen.getByText("EC")).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Assigned to Editor-in-Chief (handed back), Staff Layout Artist"
+      )
+    ).toHaveClass("sr-only")
+  })
+
+  it("marks a handed-back assignee past the third avatar in the names read out", () => {
+    const assignees = [
+      assignee(1, "Ann Able", "AA"),
+      assignee(2, "Ben Baker", "BB"),
+      assignee(3, "Cal Cruz", "CC"),
+      assignee(4, "Dee Diaz", "DD", true),
+    ]
+    render(<TaskCard task={{ ...TASK, assignees }} />)
+
+    expect(screen.getByText("+1")).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Assigned to Ann Able, Ben Baker, Cal Cruz, Dee Diaz (handed back)"
+      )
+    ).toHaveClass("sr-only")
+  })
+
   it("renders children outside the link", () => {
     render(
       <TaskCard task={TASK}>
@@ -178,7 +221,14 @@ describe("TaskCard", () => {
 
   it("has no axe violations", async () => {
     const { container } = render(
-      <TaskCard task={{ ...TASK, hasAwaitingResponse: true, overdue: true }} />
+      <TaskCard
+        task={{
+          ...TASK,
+          hasAwaitingResponse: true,
+          overdue: true,
+          assignees: [...TASK.assignees, assignee(2, "Ben Baker", "BB", true)],
+        }}
+      />
     )
 
     expect(await axeViolations(container)).toEqual([])

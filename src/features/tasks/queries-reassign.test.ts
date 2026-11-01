@@ -28,7 +28,7 @@ const ROLE_LABELS = {
 }
 
 const FORM_OPTIONS = {
-  owners: [{ kind: "desk", id: "layout", name: "Layout" }],
+  owners: [{ kind: "desk" as const, id: "layout", name: "Layout" }],
   slotMembersByRole: {
     layout_artist: [{ id: HEAD_LAYOUT, name: "Head Layout Artist" }],
     writer: [{ id: STAFF_WRITER, name: "Staff Writer" }],
@@ -89,6 +89,26 @@ describe("getReassignOptions", () => {
     })
     // The task form's owners aren't the picker's business.
     expect(options).not.toHaveProperty("owners")
+  })
+
+  it("reads only the counts when handed the form options already read", async () => {
+    const rpc = mockCounts([{ member_id: HEAD_LAYOUT, open_slots: 2 }])
+    const preRead = {
+      ...FORM_OPTIONS,
+      allMembers: [{ id: HEAD_LAYOUT, name: "Head Layout Artist" }],
+    }
+
+    const options = await getReassignOptions(preRead)
+
+    expect(getTaskFormOptions).not.toHaveBeenCalled()
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("member_open_slot_counts")
+    // Built from what it was handed, not a fresh read.
+    expect(options.allMembers).toEqual([
+      { id: HEAD_LAYOUT, name: "Head Layout Artist", openSlots: 2 },
+    ])
+    expect(options.slotMembersByRole.layout_artist).toEqual([
+      { id: HEAD_LAYOUT, name: "Head Layout Artist", openSlots: 2 },
+    ])
   })
 
   it("gives everyone 0 when the counts come back empty", async () => {

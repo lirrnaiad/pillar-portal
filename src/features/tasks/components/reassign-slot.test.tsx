@@ -121,6 +121,7 @@ function Page({
   stateLabel = "Needs reassignment",
   version = VERSION,
   options = OPTIONS,
+  namedForTask,
 }: {
   show?: boolean
   showRow?: boolean
@@ -130,6 +131,7 @@ function Page({
   stateLabel?: string
   version?: string
   options?: ReassignOptions
+  namedForTask?: boolean
 }) {
   return (
     <main>
@@ -155,6 +157,7 @@ function Page({
                 options={options}
                 focusTargetId={ROW_ID}
                 fallbackFocusTargetId={STATUS_ID}
+                namedForTask={namedForTask}
               />
             )}
           </li>
@@ -202,6 +205,27 @@ describe("ReassignSlot", () => {
     expect(trigger()).toHaveClass("min-h-11")
     expect(trigger()).toHaveTextContent("Reassign")
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("adds the task's title to Reassign's name when asked, for a list of several tasks, and changes nothing else", async () => {
+    const user = userEvent.setup()
+    render(<Page namedForTask />)
+
+    // jsdom drops the space before the sr-only part.
+    const named = screen.getByRole("button", {
+      name: /^Reassign\s?\(Cartoonist\), Lay out the spread$/,
+    })
+    expect(named).toHaveTextContent("Reassign")
+    expect(named.querySelector(".sr-only")).toHaveTextContent(
+      "(Cartoonist), Lay out the spread"
+    )
+
+    await user.click(named)
+
+    expect(dialog()).toHaveAccessibleName("Reassign Cartoonist")
+    expect(dialog()).toHaveAccessibleDescription(
+      "Staff Layout Artist · Needs reassignment"
+    )
   })
 
   it("opens the picker on a real click, titled for the role and describing who holds the slot and how", async () => {

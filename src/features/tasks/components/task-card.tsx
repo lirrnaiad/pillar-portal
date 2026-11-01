@@ -4,6 +4,7 @@ import Link from "next/link"
 import { StatusBadge, StatusDot } from "@/components/status-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { formatInPht } from "@/lib/time"
+import { cn } from "@/lib/utils"
 
 import type { TaskCardData } from "../queries/shared"
 import { SLOT_STATE_FAMILIES, SLOT_STATE_LABELS, taskStatus } from "../status"
@@ -29,7 +30,10 @@ export type TitleLinkProps = {
  * anywhere there opens Task detail; `children` sit below that block, outside
  * the link's reach, so their buttons don't navigate. Status badges reflect
  * the slots' states and the due date: display only, they decide no action.
- * Keyboard focus shows as the card's ring. The link has `outline-hidden`, not
+ * An assignee who handed back every slot they hold on the task keeps their
+ * avatar, dimmed by DESIGN.md's token, and the names read out mark them
+ * "(handed back)", so the dimming never carries that alone. Keyboard focus
+ * shows as the card's ring. The link has `outline-hidden`, not
  * `outline-none`: forced-colors mode drops the ring (a box-shadow) but paints
  * that transparent outline. No directive and no members imports, so the Board
  * can reuse it.
@@ -104,13 +108,22 @@ export function TaskCard({
           {task.assignees.length > 0 && (
             <>
               <span className="sr-only">
-                Assigned to {task.assignees.map((a) => a.name).join(", ")}
+                Assigned to{" "}
+                {task.assignees
+                  .map((a) =>
+                    a.handedBack ? `${a.name} (handed back)` : a.name
+                  )
+                  .join(", ")}
               </span>
               <div aria-hidden="true" className="flex items-center">
                 {shown.map((assignee) => (
                   <Avatar
                     key={assignee.id}
-                    className="-ml-1.5 size-[22px] ring-2 ring-card first:ml-0"
+                    className={cn(
+                      "-ml-1.5 size-[22px] ring-2 ring-card first:ml-0",
+                      assignee.handedBack &&
+                        "opacity-(--avatar-handed-back-opacity)"
+                    )}
                   >
                     <AvatarFallback className="bg-navy text-[10px] font-semibold text-white">
                       {assignee.initials}

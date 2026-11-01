@@ -70,6 +70,7 @@ export function ReassignSlot({
   options,
   focusTargetId,
   fallbackFocusTargetId,
+  namedForTask = false,
 }: {
   taskId: string
   taskTitle: string
@@ -90,6 +91,12 @@ export function ReassignSlot({
   focusTargetId: string
   /** Where focus goes if `focusTargetId` isn't on the page either. */
   fallbackFocusTargetId?: string
+  /**
+   * Appends ", <task title>" to Reassign's sr-only name, for a list that can
+   * hold the same role on several tasks (the Needs reassignment queue).
+   * Task detail leaves it off.
+   */
+  namedForTask?: boolean
 }) {
   // The member a save was sent for, so a refused pair names them.
   const pickedRef = useRef<ReassignMember | null>(null)
@@ -208,7 +215,10 @@ export function ReassignSlot({
             className={cn("min-h-11", PENDING_STYLE)}
             aria-disabled={pending}
           >
-            Reassign<span className="sr-only"> ({roleLabel})</span>
+            Reassign
+            <span className="sr-only">
+              {` (${roleLabel})${namedForTask ? `, ${taskTitle}` : ""}`}
+            </span>
           </Button>
         </DialogTrigger>
       </KeepFocusOnTarget>

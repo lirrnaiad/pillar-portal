@@ -2,8 +2,8 @@ import { Suspense } from "react"
 import type { Metadata } from "next"
 
 import { requireAdmin } from "../require-admin"
-import { AdminHomeCards } from "./admin-home"
-import { ADMIN_HOME_COUNTS } from "./admin-home-counts"
+import { AdminHomeCards, type AdminHomeCard } from "./admin-home"
+import { ADMIN_HOME_COUNTS, type AdminHomeCount } from "./admin-home-counts"
 import { AdminHomeSkeleton } from "./admin-home-skeleton"
 
 export const metadata: Metadata = {
@@ -28,15 +28,21 @@ export default async function AdminHomePage() {
   )
 }
 
-// Reads every count in parallel on each request (no cache), inside the
-// boundary so the skeleton shows while they load. A throwing count reaches
-// Next's error page.
+// Reads every link card's count and every list card's rows in parallel on
+// each request (no cache), inside the boundary so the skeleton shows while
+// they load. A throwing count or list read reaches Next's error page.
 async function AdminHomeCountCards() {
-  const cards = await Promise.all(
-    ADMIN_HOME_COUNTS.map(async ({ count, ...card }) => ({
-      ...card,
-      count: await count(),
-    }))
-  )
+  const cards = await Promise.all(ADMIN_HOME_COUNTS.map(readCard))
   return <AdminHomeCards cards={cards} />
+}
+
+// A link card's count, or a list card's rows, counted, as its preview.
+async function readCard(source: AdminHomeCount): Promise<AdminHomeCard> {
+  if ("rows" in source) {
+    const { rows, linkLabel, ...card } = source
+    const read = await rows()
+    return { ...card, count: read.length, preview: { rows: read, linkLabel } }
+  }
+  const { count, ...card } = source
+  return { ...card, count: await count() }
 }

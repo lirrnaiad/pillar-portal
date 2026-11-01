@@ -197,7 +197,14 @@ describe("getReviewQueue", () => {
         sentBack: false,
         hasAwaitingResponse: false,
         hasNeedsReassignment: false,
-        assignees: [{ id: LAYOUT, name: "Sam Layout", initials: "SL" }],
+        assignees: [
+          {
+            id: LAYOUT,
+            name: "Sam Layout",
+            initials: "SL",
+            handedBack: false,
+          },
+        ],
       },
       {
         id: T3,
@@ -210,8 +217,18 @@ describe("getReviewQueue", () => {
         hasAwaitingResponse: false,
         hasNeedsReassignment: false,
         assignees: [
-          { id: WRITER, name: "Olive Writer", initials: "OW" },
-          { id: LAYOUT, name: "Sam Layout", initials: "SL" },
+          {
+            id: WRITER,
+            name: "Olive Writer",
+            initials: "OW",
+            handedBack: false,
+          },
+          {
+            id: LAYOUT,
+            name: "Sam Layout",
+            initials: "SL",
+            handedBack: false,
+          },
         ],
       },
     ])

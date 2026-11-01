@@ -196,8 +196,14 @@ describe("getBoard", () => {
         hasAwaitingResponse: true,
         hasNeedsReassignment: true,
         assignees: [
-          { id: ME, name: "Sam Layout", initials: "SL" },
-          { id: OTHER, name: "Olive Writer", initials: "OW" },
+          // On it on one slot and handed back on the other: not marked.
+          { id: ME, name: "Sam Layout", initials: "SL", handedBack: false },
+          {
+            id: OTHER,
+            name: "Olive Writer",
+            initials: "OW",
+            handedBack: false,
+          },
         ],
         // can_review is false: allowed_moves alone, with no Done.
         moves: ["to_do", "for_review"],
@@ -212,7 +218,14 @@ describe("getBoard", () => {
         sentBack: false,
         hasAwaitingResponse: false,
         hasNeedsReassignment: false,
-        assignees: [{ id: "gone", name: "Former member", initials: "FM" }],
+        assignees: [
+          {
+            id: "gone",
+            name: "Former member",
+            initials: "FM",
+            handedBack: false,
+          },
+        ],
         // No capabilities row: nothing to offer.
         moves: [],
       },

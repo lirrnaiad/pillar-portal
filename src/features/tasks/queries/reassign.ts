@@ -4,7 +4,7 @@ import type { ProductionRole } from "@/features/members"
 import { createClient } from "@/lib/supabase/server"
 
 import type { ReassignMember } from "../reassign"
-import { getTaskFormOptions } from "./task-form"
+import { getTaskFormOptions, type TaskFormOptions } from "./task-form"
 
 /** Everything the reassign picker lists, each member with their load. */
 export type ReassignOptions = {
@@ -20,13 +20,17 @@ export type ReassignOptions = {
  * The picker's members: getTaskFormOptions()'s desk lists, everyone and the
  * role labels, each member with their open slots from
  * member_open_slot_counts() (the one open-slot definition, read as the
- * caller), 0 for a member it has no row for. Throws on any query error.
+ * caller), 0 for a member it has no row for. A caller that has already read
+ * the form options (`/admin/tasks`, for its task form) passes them in, and
+ * only the counts are read. Throws on any query error.
  */
-export async function getReassignOptions(): Promise<ReassignOptions> {
+export async function getReassignOptions(
+  formOptions?: TaskFormOptions
+): Promise<ReassignOptions> {
   const supabase = await createClient()
 
   const [options, countsResult] = await Promise.all([
-    getTaskFormOptions(),
+    formOptions ?? getTaskFormOptions(),
     supabase.rpc("member_open_slot_counts"),
   ])
 
