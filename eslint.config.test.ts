@@ -176,6 +176,23 @@ describe("eslint architecture rules", { timeout: 30_000 }, () => {
     )
   })
 
+  it("reports src/lib importing a slice, even through its index.ts", async () => {
+    const messages = await lint(
+      {
+        "src/features/members/index.ts": "export const m = 1\n",
+        "src/lib/uses-slice.ts":
+          'import { m } from "@/features/members"\nexport const u = m\n',
+      },
+      "src/lib/uses-slice.ts"
+    )
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        ruleId: "import/no-restricted-paths",
+        message: expect.stringContaining("src/lib imports no slice"),
+      })
+    )
+  })
+
   it("allows tasks to import members through its index.ts", async () => {
     const messages = await lint(
       {

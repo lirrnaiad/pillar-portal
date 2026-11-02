@@ -1,4 +1,6 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
+
+import { useFocusFallback } from "@/lib/use-focus-fallback"
 
 import { slotRespondSchema } from "../schemas"
 
@@ -35,16 +37,8 @@ export function useHandBackPanel({
 
   // However this goes away (a saved answer, or a refresh after a refused one
   // that shows the slot is no longer the viewer's to answer), focus inside it
-  // moves to the slot's row rather than falling to the page. Layout-effect
-  // cleanup runs before React removes the DOM nodes, so focus is still here.
-  useLayoutEffect(() => {
-    const root = rootRef.current
-    return () => {
-      if (root?.contains(document.activeElement)) {
-        document.getElementById(rowId)?.focus()
-      }
-    }
-  }, [rowId])
+  // moves to the slot's row rather than falling to the page.
+  useFocusFallback(rootRef, rowId)
 
   function openPanel() {
     if (pending) return

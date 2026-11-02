@@ -3,13 +3,13 @@
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { PENDING_STYLE } from "@/lib/pending-style"
 import { useCommand } from "@/lib/use-command"
 import { cn } from "@/lib/utils"
 
 import { handBackSlotAction } from "../actions"
 import { taskErrorMessage } from "../errors"
 import { HandBackForm } from "./hand-back-form"
-import { PENDING_STYLE } from "./pending-style"
 import { useHandBackPanel } from "./use-hand-back-panel"
 
 /**

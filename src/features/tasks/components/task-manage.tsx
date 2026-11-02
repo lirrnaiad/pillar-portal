@@ -16,13 +16,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { PENDING_STYLE } from "@/lib/pending-style"
 import { useCommand } from "@/lib/use-command"
 import { cn } from "@/lib/utils"
 
 import { deleteTaskAction } from "../actions"
 import { taskErrorMessage } from "../errors"
 import { focusTarget, KeepFocusOnTarget } from "./keep-focus-on-target"
-import { PENDING_STYLE } from "./pending-style"
 
 // Where the approver lands after a delete: /admin/tasks, whose NoticeToast
 // shows "Task deleted." and focuses the page's h1.

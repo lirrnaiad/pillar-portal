@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { useFormStatus } from "react-dom"
 
 import { Button } from "@/components/ui/button"
+import { PENDING_STYLE } from "@/lib/pending-style"
+import { cn } from "@/lib/utils"
 
 import { signInWithGoogleAction } from "../actions"
 
@@ -50,7 +52,10 @@ function GoogleButton() {
       onClick={(event) => {
         if (pending) event.preventDefault()
       }}
-      className="min-h-11 w-full gap-3 border-card-edge bg-card text-base shadow-card aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+      className={cn(
+        "min-h-11 w-full gap-3 border-card-edge bg-card text-base shadow-card",
+        PENDING_STYLE
+      )}
     >
       {/* A fixed 18px brand mark from /public; next/image adds nothing. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}

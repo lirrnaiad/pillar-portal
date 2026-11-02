@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Textarea } from "@/components/ui/textarea"
+import { PENDING_STYLE } from "@/lib/pending-style"
 import { useCommand } from "@/lib/use-command"
 import { cn } from "@/lib/utils"
 
@@ -25,7 +26,6 @@ import {
 import { taskErrorMessage } from "../errors"
 import { REVISION_NOTE_MAX, taskSendBackSchema } from "../schemas"
 import { focusTarget, KeepFocusOnTarget } from "./keep-focus-on-target"
-import { PENDING_STYLE } from "./pending-style"
 
 /**
  * The approver's review controls (Task detail, and each row of the review

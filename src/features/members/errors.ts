@@ -1,3 +1,5 @@
+import { STALE_COPY } from "@/lib/command-copy"
+
 // Error codes the members slice's actions return, and the copy each one shows
 // (EXPERIENCE.md). Raw auth or database errors never reach the UI.
 //
@@ -7,9 +9,6 @@
 // admin, so both get EXPERIENCE.md's stale line and the list re-reads. Any
 // other code (members.not_admin, and the position backstops the picker never
 // reaches), a parse failure or a thrown call is `members.save_failed`.
-const STALE_COPY =
-  "Something changed since you opened this. Review the latest and try again."
-
 export const MEMBER_ERROR_COPY = {
   "auth.personas_off": "Persona sign-in is off.",
   "auth.sign_in_failed": "Sign-in didn't finish. Try again.",

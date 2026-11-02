@@ -185,7 +185,7 @@ describe("respondToSlotAction", () => {
       slot_id: SLOT_ID,
       response: "on_it",
     })
-    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/(member)/dashboard", "layout")
     expect(result).toEqual({ ok: true, data: { state: "on_it" } })
   })
 
@@ -274,7 +274,7 @@ describe("moveTaskAction", () => {
       task_id: TASK_ID,
       to_column: "for_review",
     })
-    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/(member)/dashboard", "layout")
     expect(result).toEqual({ ok: true, data: { column: "for_review" } })
   })
 
@@ -351,7 +351,7 @@ describe("handBackSlotAction", () => {
       slot_id: SLOT_ID,
       reason: "Out sick",
     })
-    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/dashboard", "layout")
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/(member)/dashboard", "layout")
     expect(result).toEqual({ ok: true, data: { state: "needs_reassignment" } })
   })
 
@@ -399,8 +399,8 @@ describe.each([
     expect(rpc).toHaveBeenCalledExactlyOnceWith(rpcName, { task_id: TASK_ID })
     // The admin layout holds the review queue and Admin home's count.
     expect(revalidatePath.mock.calls).toEqual([
-      ["/dashboard", "layout"],
-      ["/admin", "layout"],
+      ["/(member)/dashboard", "layout"],
+      ["/(admin)/admin", "layout"],
     ])
     expect(result).toEqual({ ok: true, data })
   })
@@ -453,8 +453,8 @@ describe("sendBackTaskAction", () => {
       note: "fix captions",
     })
     expect(revalidatePath.mock.calls).toEqual([
-      ["/dashboard", "layout"],
-      ["/admin", "layout"],
+      ["/(member)/dashboard", "layout"],
+      ["/(admin)/admin", "layout"],
     ])
     expect(result).toEqual({ ok: true, data: { column: "doing" } })
   })
@@ -514,8 +514,8 @@ describe("deleteTaskAction", () => {
       expected_updated_at: VERSION,
     })
     expect(revalidatePath.mock.calls).toEqual([
-      ["/dashboard", "layout"],
-      ["/admin", "layout"],
+      ["/(member)/dashboard", "layout"],
+      ["/(admin)/admin", "layout"],
     ])
     expect(result).toEqual({ ok: true, data: { taskId: TASK_ID } })
   })
@@ -626,8 +626,8 @@ describe("updateTaskAction", () => {
       "loaded_member_id"
     )
     expect(revalidatePath.mock.calls).toEqual([
-      ["/dashboard", "layout"],
-      ["/admin", "layout"],
+      ["/(member)/dashboard", "layout"],
+      ["/(admin)/admin", "layout"],
     ])
     expect(result).toEqual({
       ok: true,
@@ -717,8 +717,8 @@ describe("reassignSlotAction", () => {
       expected_updated_at: "2026-10-30T02:15:42.123456+00:00",
     })
     expect(revalidatePath.mock.calls).toEqual([
-      ["/dashboard", "layout"],
-      ["/admin", "layout"],
+      ["/(member)/dashboard", "layout"],
+      ["/(admin)/admin", "layout"],
     ])
     expect(result).toEqual({ ok: true, data: { slotId: SLOT_ID } })
   })
