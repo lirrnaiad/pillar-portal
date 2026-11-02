@@ -18,13 +18,30 @@
 // Later stories widen this on purpose, in the same change as the feature:
 // - Turnstile (Epic 7): https://challenges.cloudflare.com in `script-src`
 //   and in a new `frame-src`.
-// Not here yet: CSP violation reporting (no `report-to`), and HSTS, which
-// Vercel already sends on *.vercel.app; it is decided at go-live for the
-// Pillar domain.
+//
+// The rest (decided at go live, Story 3.5; OPERATIONS.md section 2, step 15):
+// - `Strict-Transport-Security`, two years, for an https site outside
+//   `next dev` only. Browsers ignore it over http, so the guard that matters
+//   is development: `next dev --experimental-https` with an https localhost
+//   site URL would otherwise pin localhost to https for two years. No
+//   `includeSubDomains`, so only the app's own hostname is held to https,
+//   not the rest of the Pillar domain, and so no `preload`, which needs it.
+// - `Permissions-Policy` turns off the powerful features the portal never
+//   uses.
+// - `Cross-Origin-Opener-Policy: same-origin`: sign-in is a redirect, never
+//   a popup, so no other origin needs a handle on this window.
+// - No CSP violation reporting (no `report-to`): `error_events` holds server
+//   faults only, never anything from the browser.
 
 export type SecurityHeader = { key: string; value: string }
 
 const GOOGLE_ACCOUNTS = "https://accounts.google.com"
+
+const PERMISSIONS_POLICY =
+  "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+
+// Two years.
+const HSTS = "max-age=63072000"
 
 export function securityHeaders({
   supabaseUrl,
@@ -51,13 +68,20 @@ export function securityHeaders({
     `form-action 'self' ${supabase} ${GOOGLE_ACCOUNTS}`,
     "frame-ancestors 'none'",
   ]
-  if (new URL(siteUrl).protocol === "https:") {
+  const isHttps = new URL(siteUrl).protocol === "https:"
+  if (isHttps) {
     directives.push("upgrade-insecure-requests")
   }
 
-  return [
+  const headers: SecurityHeader[] = [
     { key: "Content-Security-Policy", value: directives.join("; ") },
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "Referrer-Policy", value: "same-origin" },
+    { key: "Permissions-Policy", value: PERMISSIONS_POLICY },
+    { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   ]
+  if (isHttps && !isDev) {
+    headers.push({ key: "Strict-Transport-Security", value: HSTS })
+  }
+  return headers
 }

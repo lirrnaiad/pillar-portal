@@ -241,6 +241,14 @@ Two lists change with the schema, in the same commit as the migration:
   Previews block the Vercel toolbar.
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: same-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Strict-Transport-Security: max-age=63072000`, only to an https site
+  (`NEXT_PUBLIC_SITE_URL`) outside `next dev`. It has no `includeSubDomains`
+  and no `preload`.
+
+There is no CSP violation reporting. `OPERATIONS.md` (go-live step 15)
+records why.
 
 ## Layout
 
