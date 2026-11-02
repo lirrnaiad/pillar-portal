@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { clientEnv } from "@/lib/env.client"
+import { PENDING_STYLE } from "@/lib/pending-style"
 import { useCommand } from "@/lib/use-command"
 import { cn } from "@/lib/utils"
 
@@ -32,7 +33,6 @@ import {
 import type { PRODUCTION_ROLES } from "../schemas"
 import { focusTarget, KeepFocusOnTarget } from "./keep-focus-on-target"
 import { copyForMessengerAction } from "./messenger-toast"
-import { PENDING_STYLE } from "./pending-style"
 
 type ProductionRole = (typeof PRODUCTION_ROLES)[number]
 

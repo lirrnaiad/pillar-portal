@@ -499,7 +499,10 @@ describe("approveMemberAction", () => {
       positions: ["head_photojournalist", "staff_photojournalist"],
       primary_position: "staff_photojournalist",
     })
-    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/admin", "layout")
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith(
+      "/(admin)/admin",
+      "layout"
+    )
   })
 
   it.each([
@@ -596,7 +599,10 @@ describe("declineMemberAction", () => {
     expect(rpc).toHaveBeenCalledExactlyOnceWith("decline_member", {
       member_id: MEMBER_ID,
     })
-    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/admin", "layout")
+    expect(revalidatePath).toHaveBeenCalledExactlyOnceWith(
+      "/(admin)/admin",
+      "layout"
+    )
   })
 
   it.each([

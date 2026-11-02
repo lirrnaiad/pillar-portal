@@ -1,12 +1,9 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { after } from "next/server"
 
-import {
-  type ErrorEventWhere,
-  recordErrorEvent,
-} from "@/lib/record-error-event"
+import { mapCommandError } from "@/lib/map-command-error"
+import { ADMIN_AREA, MEMBER_AREA } from "@/lib/revalidate-paths"
 import { createClient } from "@/lib/supabase/server"
 import type { Database } from "@/lib/supabase/database.types"
 import { phtInputToUtc } from "@/lib/time"
@@ -72,7 +69,8 @@ export type ReassignSlotState =
 // and the UI has copy for. Any other message — a code the UI never expects
 // (create_task's tasks.no_slots and tasks.invalid_slot_member backstops), a
 // raw database error, a network failure — maps to that action's generic code
-// instead of leaking a raw error to the UI, and is recorded in error_events.
+// instead of leaking a raw error to the UI, and mapCommandError records it in
+// error_events.
 const CREATE_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
   "auth.not_active",
   "tasks.not_admin",
@@ -127,23 +125,6 @@ const REASSIGN_ERROR_CODES: ReadonlySet<TaskErrorCode> = new Set([
 // refine still gets a specific, actionable error instead of the generic one.
 const UNIQUE_VIOLATION = "23505"
 
-// A known code is expected, so it is returned as is. Anything else is
-// unexpected: it is recorded (code, action, entity and id only) after the
-// response, so the toast never waits on it, and the generic code returned.
-// A parse failure never gets here: it is the caller's input, which anyone
-// can send, and recording it would let anyone fill the table.
-function mapError(
-  error: { message: string },
-  known: ReadonlySet<TaskErrorCode>,
-  fallback: TaskErrorCode,
-  where: ErrorEventWhere
-): TaskErrorCode {
-  const code = error.message as TaskErrorCode
-  if (known.has(code)) return code
-  after(() => recordErrorEvent(error, where))
-  return fallback
-}
-
 /**
  * Creates a task (AD-3, AD-4): Zod-parses the task form's data, calls the one
  * command that may write tasks/task_assignments/activity, maps any error to
@@ -191,7 +172,7 @@ export async function createTaskAction(input: unknown): Promise<CreateTaskState>
       code:
         error.code === UNIQUE_VIOLATION
           ? "tasks.duplicate_slot"
-          : mapError(error, CREATE_ERROR_CODES, "tasks.create_failed", {
+          : mapCommandError(error, CREATE_ERROR_CODES, "tasks.create_failed", {
               route: "action createTaskAction",
               entityType: "task",
             }),
@@ -227,7 +208,7 @@ export async function respondToSlotAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
+      code: mapCommandError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
         route: "action respondToSlotAction",
         entityType: "task_assignment",
         entityId: slotId,
@@ -235,7 +216,7 @@ export async function respondToSlotAction(
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   return { ok: true, data: { state: response } }
 }
 
@@ -262,7 +243,7 @@ export async function handBackSlotAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
+      code: mapCommandError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
         route: "action handBackSlotAction",
         entityType: "task_assignment",
         entityId: slotId,
@@ -270,7 +251,7 @@ export async function handBackSlotAction(
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   return { ok: true, data: { state: "needs_reassignment" } }
 }
 
@@ -294,7 +275,7 @@ export async function moveTaskAction(input: unknown): Promise<MoveTaskState> {
   if (error) {
     return {
       ok: false,
-      code: mapError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
+      code: mapCommandError(error, COMMAND_ERROR_CODES, "tasks.save_failed", {
         route: "action moveTaskAction",
         entityType: "task",
         entityId: taskId,
@@ -302,7 +283,7 @@ export async function moveTaskAction(input: unknown): Promise<MoveTaskState> {
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   return { ok: true, data: { column: toColumn } }
 }
 
@@ -324,7 +305,7 @@ export async function markDoneAction(input: unknown): Promise<MarkDoneState> {
   if (error) {
     return {
       ok: false,
-      code: mapError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
+      code: mapCommandError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
         route: "action markDoneAction",
         entityType: "task",
         entityId: taskId,
@@ -332,9 +313,9 @@ export async function markDoneAction(input: unknown): Promise<MarkDoneState> {
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   // The review queue and Admin home's count.
-  revalidatePath("/admin", "layout")
+  revalidatePath(ADMIN_AREA, "layout")
   return { ok: true, data: { column: "done" } }
 }
 
@@ -361,7 +342,7 @@ export async function sendBackTaskAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
+      code: mapCommandError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
         route: "action sendBackTaskAction",
         entityType: "task",
         entityId: taskId,
@@ -369,9 +350,9 @@ export async function sendBackTaskAction(
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   // The review queue and Admin home's count.
-  revalidatePath("/admin", "layout")
+  revalidatePath(ADMIN_AREA, "layout")
   return { ok: true, data: { column: "doing" } }
 }
 
@@ -395,7 +376,7 @@ export async function reopenTaskAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
+      code: mapCommandError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
         route: "action reopenTaskAction",
         entityType: "task",
         entityId: taskId,
@@ -403,10 +384,10 @@ export async function reopenTaskAction(
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   // Every approver command revalidates the admin pages too: they read the
   // same tasks.
-  revalidatePath("/admin", "layout")
+  revalidatePath(ADMIN_AREA, "layout")
   return { ok: true, data: { column: "doing" } }
 }
 
@@ -434,7 +415,7 @@ export async function deleteTaskAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
+      code: mapCommandError(error, REVIEW_ERROR_CODES, "tasks.save_failed", {
         route: "action deleteTaskAction",
         entityType: "task",
         entityId: taskId,
@@ -442,9 +423,9 @@ export async function deleteTaskAction(
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   // The review queue and Admin home's count.
-  revalidatePath("/admin", "layout")
+  revalidatePath(ADMIN_AREA, "layout")
   return { ok: true, data: { taskId } }
 }
 
@@ -497,7 +478,7 @@ export async function updateTaskAction(
       code:
         error.code === UNIQUE_VIOLATION
           ? "tasks.duplicate_slot"
-          : mapError(error, UPDATE_ERROR_CODES, "tasks.save_failed", {
+          : mapCommandError(error, UPDATE_ERROR_CODES, "tasks.save_failed", {
               route: "action updateTaskAction",
               entityType: "task",
               entityId: taskId,
@@ -505,9 +486,9 @@ export async function updateTaskAction(
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   // The review queue and Admin home's count.
-  revalidatePath("/admin", "layout")
+  revalidatePath(ADMIN_AREA, "layout")
   return { ok: true, data: { taskId, newAssignee: data === true } }
 }
 
@@ -540,7 +521,7 @@ export async function reassignSlotAction(
       code:
         error.code === UNIQUE_VIOLATION
           ? "tasks.duplicate_slot"
-          : mapError(error, REASSIGN_ERROR_CODES, "tasks.save_failed", {
+          : mapCommandError(error, REASSIGN_ERROR_CODES, "tasks.save_failed", {
               route: "action reassignSlotAction",
               entityType: "task_assignment",
               entityId: slotId,
@@ -548,8 +529,8 @@ export async function reassignSlotAction(
     }
   }
 
-  revalidatePath("/dashboard", "layout")
+  revalidatePath(MEMBER_AREA, "layout")
   // The review queue and Admin home's count.
-  revalidatePath("/admin", "layout")
+  revalidatePath(ADMIN_AREA, "layout")
   return { ok: true, data: { slotId } }
 }

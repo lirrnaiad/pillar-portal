@@ -1,6 +1,6 @@
 "use client"
 
-import { useId, useLayoutEffect, useRef, useState } from "react"
+import { useId, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import {
@@ -23,7 +23,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { PENDING_STYLE } from "@/lib/pending-style"
 import { useCommand } from "@/lib/use-command"
+import {
+  isInPopupOf,
+  isOnPage,
+  useFocusFallback,
+} from "@/lib/use-focus-fallback"
 import { cn } from "@/lib/utils"
 
 import { approveMemberAction, declineMemberAction } from "../actions"
@@ -31,30 +37,7 @@ import { memberErrorMessage } from "../errors"
 import type { PositionGroup } from "../position-groups"
 import type { PendingMember } from "../queries"
 
-// Shown while a command saves: the tasks slice's PENDING_STYLE, restated,
-// since a slice imports no other slice's components (AD-2). The controls stay
-// focusable (`aria-disabled`, not `disabled`, which would drop focus to the
-// page) and ignore input instead.
-const PENDING_STYLE =
-  "aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-
 type DialogKind = "look-alike" | "decline"
-
-// The attribute (set to the card's id) on the card's portaled popups, the
-// confirmation dialog and the primary select's list, which render outside its
-// root.
-const CARD_OWNER = "data-card-owner"
-
-/** Whether `element` is inside one of the card's portaled popups. */
-function isInPopupOf(element: Element | null, cardId: string): boolean {
-  return (
-    element?.closest(`[${CARD_OWNER}]`)?.getAttribute(CARD_OWNER) === cardId
-  )
-}
-
-function isOnPage(element: Element | null): boolean {
-  return element === null || element === document.body
-}
 
 /**
  * One member awaiting approval on /admin/members (Story 2.2): their name,
@@ -115,27 +98,11 @@ export function PendingMemberCard({
           ?.id ?? null)
 
   // However the card goes away (approved, declined, or gone in a re-read
-  // after a refusal), focus inside it, or in one of its popups (portaled
-  // outside it), moves to the heading rather than falling to the page.
-  // Layout-effect cleanup runs before React removes the DOM nodes, so focus
-  // is still here. An open popup traps focus (Radix's FocusScope pulls it
-  // back while its nodes are attached), so from a popup the move waits for a
-  // microtask, once the commit has removed them and focus has fallen to the
-  // page.
-  useLayoutEffect(() => {
-    const root = rootRef.current
-    return () => {
-      const active = document.activeElement
-      const focusHeading = () => document.getElementById(focusTargetId)?.focus()
-      if (active !== null && root?.contains(active)) {
-        focusHeading()
-      } else if (isInPopupOf(active, id)) {
-        queueMicrotask(() => {
-          if (isOnPage(document.activeElement)) focusHeading()
-        })
-      }
-    }
-  }, [focusTargetId, id])
+  // after a refusal), focus inside it, or in one of its popups (the
+  // confirmation dialog and the primary select's list, portaled outside it
+  // and marked `data-popup-owner` with the card's id), moves to the heading
+  // rather than falling to the page.
+  useFocusFallback(rootRef, focusTargetId, id)
 
   // After a success, before revalidation takes the card away. Focus that has
   // moved on to another card or control stays where it is.
@@ -311,7 +278,7 @@ export function PendingMemberCard({
                 >
                   <SelectValue placeholder="Choose one" />
                 </SelectTrigger>
-                <SelectContent data-card-owner={id}>
+                <SelectContent data-popup-owner={id}>
                   {checkedPositions.map((position) => (
                     <SelectItem
                       key={position.id}
@@ -341,7 +308,7 @@ export function PendingMemberCard({
 
       <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <AlertDialogContent
-          data-card-owner={id}
+          data-popup-owner={id}
           onCloseAutoFocus={(event) => {
             // Radix returns focus to what had it before the dialog opened,
             // a tick after it closes. After a confirmed command that can be

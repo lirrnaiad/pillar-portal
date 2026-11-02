@@ -9,10 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { PENDING_STYLE } from "@/lib/pending-style"
 import { cn } from "@/lib/utils"
 
 import { TASK_COLUMN_LABELS, type TaskColumn } from "../status"
-import { PENDING_STYLE } from "./pending-style"
 
 export const MOVE_LABEL = "Move to…"
 

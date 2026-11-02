@@ -7,10 +7,12 @@ import { after } from "next/server"
 
 import { clientEnv } from "@/lib/env.client"
 import { personasEnabled, serverEnv } from "@/lib/env.server"
+import { mapCommandError } from "@/lib/map-command-error"
 import {
   type ErrorEventWhere,
   recordErrorEvent,
 } from "@/lib/record-error-event"
+import { ADMIN_AREA } from "@/lib/revalidate-paths"
 import { createClient } from "@/lib/supabase/server"
 
 import type { MemberErrorCode } from "./errors"
@@ -179,24 +181,15 @@ export type MemberCommandState =
 
 // The codes approve_member and decline_member raise that the page has copy
 // for. Anything else (members.not_admin, the position backstops, a raw
-// database or network error) is members.save_failed, and is recorded in
-// error_events after the response (code, action, member id only). A parse
-// failure never gets here: anyone can send one, so it isn't recorded.
+// database or network error) is members.save_failed, and mapCommandError
+// records it in error_events after the response (code, action, member id
+// only). A parse failure never gets there: anyone can send one, so it isn't
+// recorded.
 const COMMAND_ERROR_CODES: ReadonlySet<MemberErrorCode> = new Set([
   "auth.not_active",
   "members.stale",
   "members.not_found",
 ])
-
-function mapError(
-  error: { message: string },
-  where: ErrorEventWhere
-): MemberErrorCode {
-  const code = error.message as MemberErrorCode
-  if (COMMAND_ERROR_CODES.has(code)) return code
-  after(() => recordErrorEvent(error, where))
-  return "members.save_failed"
-}
 
 /**
  * Approves a pending member with their positions and primary (AD-3, AD-4).
@@ -220,7 +213,7 @@ export async function approveMemberAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, {
+      code: mapCommandError(error, COMMAND_ERROR_CODES, "members.save_failed", {
         route: "action approveMemberAction",
         entityType: "member",
         entityId: memberId,
@@ -228,7 +221,7 @@ export async function approveMemberAction(
     }
   }
 
-  revalidatePath("/admin", "layout")
+  revalidatePath(ADMIN_AREA, "layout")
   return { ok: true, data: { memberId } }
 }
 
@@ -251,7 +244,7 @@ export async function declineMemberAction(
   if (error) {
     return {
       ok: false,
-      code: mapError(error, {
+      code: mapCommandError(error, COMMAND_ERROR_CODES, "members.save_failed", {
         route: "action declineMemberAction",
         entityType: "member",
         entityId: memberId,
@@ -259,6 +252,6 @@ export async function declineMemberAction(
     }
   }
 
-  revalidatePath("/admin", "layout")
+  revalidatePath(ADMIN_AREA, "layout")
   return { ok: true, data: { memberId } }
 }

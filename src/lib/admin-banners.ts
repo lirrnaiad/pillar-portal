@@ -19,9 +19,10 @@ export type AdminBanner = {
    * story to whatever it cancels. Omitted, the bar has no Cancel. It must be
    * a Server Action exported from a "use server" module: a plain function
    * can't be serialized into the form and breaks the layout's render. It must
-   * also `revalidatePath("/admin", "layout")`, so the bar goes away once the
-   * thing is canceled. A pending state, a confirmation or a two-factor
-   * step-up are the owning story's to add when it needs them.
+   * also `revalidatePath(ADMIN_AREA, "layout")` (src/lib/revalidate-paths.ts
+   * says why it is a route file path, not the URL `/admin`), so the bar goes
+   * away once the thing is canceled. A pending state, a confirmation or a
+   * two-factor step-up are the owning story's to add when it needs them.
    */
   cancel?: (formData: FormData) => void | Promise<void>
 }

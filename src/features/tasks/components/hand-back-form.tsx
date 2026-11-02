@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button"
 import { FieldError } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PENDING_STYLE } from "@/lib/pending-style"
 import { cn } from "@/lib/utils"
-
-import { PENDING_STYLE } from "./pending-style"
 
 export const REASON_MAX = 280
 

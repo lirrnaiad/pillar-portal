@@ -1,7 +1,3 @@
-// @vitest-environment jsdom
-import "@testing-library/jest-dom/vitest"
-
-import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
@@ -46,7 +42,6 @@ function call(searchParams: SearchParams) {
 }
 
 afterEach(() => {
-  cleanup()
   vi.clearAllMocks()
 })
 
@@ -84,15 +79,16 @@ describe("the home page, where Supabase Auth falls back", () => {
     }
   )
 
-  it("renders the placeholder otherwise", async () => {
-    render(await call({ next: "/dashboard" }))
-
-    expect(redirect).not.toHaveBeenCalled()
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "The Pillar Portal"
-    )
-    expect(
-      screen.getByText("The portal is being built. Check back soon.")
-    ).toBeInTheDocument()
-  })
+  it.each([
+    ["the bare /", {}],
+    ["any other query", { next: "/admin", state: "xyz" }],
+  ])(
+    "sends %s to /dashboard (the proxy sends a signed-out visitor on to /login)",
+    async (_label, searchParams) => {
+      await expect(call(searchParams)).rejects.toEqual(
+        new RedirectError("/dashboard")
+      )
+      expect(redirect).toHaveBeenCalledExactlyOnceWith("/dashboard")
+    }
+  )
 })

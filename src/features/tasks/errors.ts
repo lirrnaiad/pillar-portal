@@ -1,3 +1,5 @@
+import { STALE_COPY } from "@/lib/command-copy"
+
 // Error codes the tasks slice's actions return, and the copy each one shows.
 // Raw Postgres errors never reach the UI (mirrors
 // src/features/members/errors.ts).
@@ -46,9 +48,6 @@
 // meanwhile ("try again", and the refresh takes Reassign away); and
 // tasks.duplicate_slot, which the picker shows with the picked member's name
 // instead of this copy.
-const STALE_COPY =
-  "Something changed since you opened this. Review the latest and try again."
-
 export const TASK_ERROR_COPY = {
   "auth.not_active": "Sign in to do that.",
   "tasks.not_admin": "Only the Editorial Board can create tasks.",

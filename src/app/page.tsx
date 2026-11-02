@@ -2,14 +2,18 @@ import { redirect } from "next/navigation"
 
 import { loginPath } from "@/features/members"
 
-// The placeholder home, which is also where Supabase Auth falls back to (the
-// Site URL) when it can't use the sign-in's own redirect: an expired or
-// invalid OAuth state, or a refused `redirect_to`. It then sends `?code=…`
-// (a finished sign-in) or `?error=…`, so:
+// `/` is where Supabase Auth falls back to (the Site URL) when it can't use
+// the sign-in's own redirect: an expired or invalid OAuth state, or a refused
+// `redirect_to`. It then sends `?code=…` (a finished sign-in) or `?error=…`,
+// so:
 // - a `code` goes on to /auth/callback, which exchanges it (with `next`
 //   lost, the member lands on /dashboard);
 // - any `error` goes to /login with "Sign-in didn't finish";
-// - anything else renders the placeholder.
+// - anything else goes to /dashboard. The portal has no home page of its own
+//   (the placeholder that said it was being built went once it was in use),
+//   so `/` opens the portal: the proxy sends a signed-out visitor on to
+//   /login, and requireActiveMember() sends a pending, declined or
+//   deactivated one to /login's account state.
 export default async function Page({ searchParams }: PageProps<"/">) {
   const { code, error } = await searchParams
 
@@ -20,16 +24,5 @@ export default async function Page({ searchParams }: PageProps<"/">) {
     redirect(loginPath({ next: "/dashboard", error: true }))
   }
 
-  return (
-    <main className="mx-auto flex min-h-svh w-full max-w-160 flex-col justify-center gap-4 px-page-margin-mobile py-12 md:px-page-margin-desktop">
-      <div className="rounded-lg border border-card-edge bg-card p-card-padding shadow-card">
-        <h1 className="font-heading text-display text-navy">
-          The Pillar Portal
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          The portal is being built. Check back soon.
-        </p>
-      </div>
-    </main>
-  )
+  redirect("/dashboard")
 }

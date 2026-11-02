@@ -31,6 +31,13 @@ const sliceZones = [
     from: "./src/app",
     message: "Only src/app may import src/app (AD-2).",
   },
+  // src/lib is shared by every slice, so it imports none, not even through
+  // an index.ts.
+  {
+    target: "./src/lib",
+    from: "./src/features",
+    message: "src/lib imports no slice (AD-2).",
+  },
   // Code outside a slice imports it only through its index.ts.
   ...slices.map((slice) => ({
     target: [

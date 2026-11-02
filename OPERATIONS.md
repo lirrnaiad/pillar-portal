@@ -1,8 +1,9 @@
 # Operations
 
 The runbook for The Pillar Portal's production: who owns what, how production
-goes live, how the first admin is made, how the portal changes hands, how to
-read the records it keeps about itself, and how its backups run and restore.
+goes live, how the first admin is made (and a mistaken decline undone), how
+the portal changes hands, how to read the records it keeps about itself, and
+how its backups run and restore.
 
 This file is public, like the rest of the repository. It holds no secret, no
 personal data and nothing from the planning material. Every credential, and
@@ -221,6 +222,55 @@ and writes nothing:
 | `members.not_found` | No member has that email | Check the spelling; the person must sign in once with Google first |
 | `members.not_pending` | That member is declined, deactivated or already active | Only a member waiting for approval can be bootstrapped |
 
+### Undoing a mistaken decline
+
+The app has no undo for **Decline**. When an admin declines someone by
+mistake, the database owner clears the decline with the statement below, so
+the person is waiting for approval again. Use it only for a decline that was
+a mistake: it changes nothing for a member who is active, deactivated or
+already waiting.
+
+Put the person's email in place of `<email>`. As with the bootstrap, case and
+surrounding spaces don't matter. An apostrophe in the email is doubled:
+`o''brien@…`. It is one statement, so `supabase db query` takes it. Run it in
+production's dashboard SQL Editor, which runs as `postgres`, or save it to a
+file and run
+`pnpm exec supabase db query --db-url "<production connection string>" -f <file>`.
+Never relink the checkout to production for it: the checkout stays linked to
+staging, so `--linked` would run it there.
+`supabase/tests/members/undo_decline.test.sql` runs this exact statement, so
+change the two together; `src/features/members/undo-decline-runbook.test.ts`
+fails when they differ.
+
+```sql
+with undeclined as (
+  update public.members m
+  set declined_at = null,
+      updated_at = now(),
+      updated_by = null
+  where m.email = lower(regexp_replace('<email>', '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+    and m.role = 'pending'
+    and m.declined_at is not null
+    and m.deactivated_at is null
+  returning m.id, m.email
+)
+select id, email, private.log_activity(gen_random_uuid(), 'member', id, null, 'undeclined')
+from undeclined
+```
+
+**What it does:** it clears the member's `declined_at`, sets `updated_at` to
+now and leaves `updated_by` empty (no member made the change), and records
+one `activity` row (`member`, `undeclined`, with no actor). It returns one
+row: the member's id and email, and an empty third column (the activity
+write).
+
+**Zero rows** means nothing changed: no member has that email, or that member
+isn't declined (still waiting, or active), or they are deactivated. Check the
+spelling. A second run is safe: it returns zero rows.
+
+**Afterwards:** the person's next sign-in shows Awaiting approval, and an
+admin approves them at `/admin/members` as usual.
+
 ## 4. Handover
 
 When the Online Manager or the developer changes:
@@ -300,7 +350,9 @@ Vercel Hobby keeps logs for one hour, so the portal keeps its own records:
     - An error Next.js captures (a thrown page, Route Handler, Server Action
       or proxy) is `<routeType> <routePath>`: `render`, `route`, `action` or
       `proxy`, then the route's file pattern, so a thrown Server Action on
-      the members page reads `action /(admin)/admin/members`.
+      the members page reads `action /(admin)/admin/members`. A `render`
+      route drops the route group: a render error on Task detail reads
+      `render /dashboard/tasks/[id]`, as staging recorded on 2026-11-02.
     - An unexpected error an action maps to its generic message is
       `action <actionName>`, such as `action moveTaskAction`.
     - The sites that catch a fault themselves name themselves:
