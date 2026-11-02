@@ -306,7 +306,8 @@ describe("error copy", () => {
       "auth.not_active": "Sign in to do that.",
       "tasks.not_admin": "Only the Editorial Board can create tasks.",
       "tasks.duplicate_slot": "The same member already has that role — remove one.",
-      "tasks.create_failed": "Couldn't create the task. Try again.",
+      // EXPERIENCE.md's Save failed line, as every other save shows it.
+      "tasks.create_failed": "Couldn't save — try again.",
       "tasks.not_found": "This task was deleted or the link is wrong.",
       "tasks.not_allowed": "Couldn't save — try again.",
       "tasks.save_failed": "Couldn't save — try again.",

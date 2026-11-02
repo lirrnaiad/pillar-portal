@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 
 import { NoticeToast } from "../notice-toast"
+import { OfflineToast } from "../offline-toast"
 import { AdminBannerSlot } from "./admin-banners"
 import { AdminShell } from "./admin-shell"
 import { requireAdmin } from "./require-admin"
@@ -12,7 +13,8 @@ import { requireAdmin } from "./require-admin"
 // access (spec-1-5-admin-task-creation.md). The banner slot reads its sources
 // only after the check, whenever the layout renders. The notice-toast reader
 // shows a `?notice=` a command's navigation set, such as Task detail's
-// Delete landing on /admin/tasks.
+// Delete landing on /admin/tasks; the offline toast, a dropped connection. A
+// page that throws shows error.tsx inside this shell.
 export default async function AdminLayout({
   children,
 }: Readonly<{
@@ -25,6 +27,7 @@ export default async function AdminLayout({
       <Suspense fallback={null}>
         <NoticeToast />
       </Suspense>
+      <OfflineToast />
       {children}
     </AdminShell>
   )

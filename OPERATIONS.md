@@ -291,7 +291,11 @@ Vercel Hobby keeps logs for one hour, so the portal keeps its own records:
 - **`error_events`:** one row per unexpected server error.
   - `code`: a Postgres SQLSTATE (`42501` is permission denied), a
     PostgREST `PGRST...` code or an Auth code (the error's own, or that of
-    the database error it wraps), or else an error's class name.
+    the database error it wraps), or else an error's class name. A
+    command's code that its action doesn't expect, a backstop such as
+    `tasks.no_slots` or `members.invalid_position`, is recorded as `P0001`,
+    the SQLSTATE of `raise exception`. The recorder never reads a message,
+    so the route names the action but not the reason.
   - `route`: where it happened, never with a query string.
     - An error Next.js captures (a thrown page, Route Handler, Server Action
       or proxy) is `<routeType> <routePath>`: `render`, `route`, `action` or
@@ -304,8 +308,14 @@ Vercel Hobby keeps logs for one hour, so the portal keeps its own records:
       `route /api/tasks/[id]/ics`, `route /auth/callback` and
       `action signInWithGoogleAction`.
   - `entity_type` and `entity_id`: the row an action was about.
-  - `digest`: the id Next.js shows on its error page (`<hash>@E<n>` for
-    Next's own errors).
+  - `digest`: the id a member or admin page that failed to load shows as
+    "Error ID: <digest>" (`<hash>@E<n>` for Next's own errors).
+    - A page that fails in the browser rather than on the server shows no
+      Error ID and writes no row.
+  - **Rows per failed page:** on Vercel, one failed page load writes one
+    row. Each **Try again** is a new request, so it writes a row of its
+    own. Locally, `next dev` can write two identical rows for one render
+    error, so count rows on staging, not under `next dev`.
 
 Neither table holds names, emails, messages, tokens or request bodies.
 `entity_id` is only a row id, but for `member` rows it is a member's id,
@@ -341,7 +351,8 @@ group by code, route
 order by errors desc, last_seen desc;
 ```
 
-The error behind an error page (production shows its digest on the page):
+The error behind a page that failed to load, which shows its digest as
+"Error ID: <digest>":
 
 ```sql
 select occurred_at, code, route, entity_type, entity_id

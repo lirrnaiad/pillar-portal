@@ -30,7 +30,8 @@ export default async function AdminHomePage() {
 
 // Reads every link card's count and every list card's rows in parallel on
 // each request (no cache), inside the boundary so the skeleton shows while
-// they load. A throwing count or list read reaches Next's error page.
+// they load. A throwing count or list read reaches (admin)/error.tsx, which
+// replaces the page inside the admin shell.
 async function AdminHomeCountCards() {
   const cards = await Promise.all(ADMIN_HOME_COUNTS.map(readCard))
   return <AdminHomeCards cards={cards} />

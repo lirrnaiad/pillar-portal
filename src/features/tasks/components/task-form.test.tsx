@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest"
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -128,6 +129,17 @@ async function fillMinimalValidForm(user: ReturnType<typeof userEvent.setup>) {
   })
 }
 
+// No slot error shows, inline or on a picker. useFieldArray re-checks the
+// slots after an Add slot or Remove in a later effect, so this waits for
+// that check to settle before looking.
+async function expectNoSlotErrors() {
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+  expect(screen.queryAllByRole("alert")).toEqual([])
+  for (const box of screen.getAllByRole("combobox")) {
+    expect(box).not.toHaveAttribute("aria-invalid", "true")
+  }
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -192,6 +204,62 @@ describe("TaskForm", () => {
 
     expect(await screen.findByText("Add a due date")).toBeInTheDocument()
     await waitFor(() => expect(screen.getByLabelText("Due date")).toHaveFocus())
+    expect(createTaskAction).not.toHaveBeenCalled()
+  })
+
+  it("shows an empty Title's error once it is left, before any submit, and clears it as it is typed in", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.click(screen.getByLabelText("Title"))
+    await user.tab()
+
+    expect(await screen.findByText("Add a title")).toBeInTheDocument()
+    expect(screen.getByLabelText("Title")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    )
+    expect(createTaskAction).not.toHaveBeenCalled()
+
+    await user.type(screen.getByLabelText("Title"), "L")
+    await waitFor(() =>
+      expect(screen.queryByText("Add a title")).not.toBeInTheDocument()
+    )
+  })
+
+  it("shows no error on a Select opened and closed without a choice", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    for (const name of ["Owner", "Role", "Member"]) {
+      await user.click(screen.getByRole("combobox", { name }))
+      await screen.findByRole("listbox")
+      await user.keyboard("{Escape}")
+      await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull())
+    }
+    await user.tab()
+    // Leaving an empty Title runs a validation pass, so the Selects' errors
+    // would have shown by the time its own does.
+    await user.click(screen.getByLabelText("Title"))
+    await user.tab()
+
+    expect(await screen.findByText("Add a title")).toBeInTheDocument()
+    expect(screen.getAllByRole("alert")).toHaveLength(1)
+    for (const box of screen.getAllByRole("combobox")) {
+      expect(box).toHaveAttribute("aria-invalid", "false")
+    }
+  })
+
+  it("focuses the first error, Title, when an empty form is submitted", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.click(screen.getByRole("button", { name: "Create task" }))
+
+    expect(await screen.findByText("Add a title")).toBeInTheDocument()
+    expect(screen.getByText("Choose one owner")).toBeInTheDocument()
+    expect(screen.getByText("Add a due date")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText("Title")).toHaveFocus())
     expect(createTaskAction).not.toHaveBeenCalled()
   })
 
@@ -288,20 +356,38 @@ describe("TaskForm", () => {
     expect(screen.getByLabelText("Title")).toHaveValue("Lay out the spread")
   })
 
-  it("toasts a generic error and doesn't crash when the action call itself fails", async () => {
-    createTaskAction.mockRejectedValue(new Error("network error"))
-    const user = userEvent.setup()
-    renderForm()
+  it.each([
+    [
+      "the action maps an unexpected failure to tasks.create_failed",
+      () =>
+        createTaskAction.mockResolvedValue({
+          ok: false,
+          code: "tasks.create_failed",
+        }),
+    ],
+    [
+      "the action call itself fails",
+      () => createTaskAction.mockRejectedValue(new Error("network error")),
+    ],
+  ])(
+    "toasts Couldn't save — try again. and keeps what was typed when %s",
+    async (_, fail) => {
+      fail()
+      const user = userEvent.setup()
+      renderForm()
 
-    await fillMinimalValidForm(user)
-    await user.click(screen.getByRole("button", { name: "Create task" }))
+      await fillMinimalValidForm(user)
+      await user.click(screen.getByRole("button", { name: "Create task" }))
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(
-        "Couldn't create the task. Try again."
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledExactlyOnceWith(
+          "Couldn't save — try again."
+        )
       )
-    )
-  })
+      expect(toastSuccess).not.toHaveBeenCalled()
+      expect(screen.getByLabelText("Title")).toHaveValue("Lay out the spread")
+    }
+  )
 
   it("clears the chosen member when the slot's role changes", async () => {
     const user = userEvent.setup()
@@ -351,6 +437,31 @@ describe("TaskForm", () => {
 
     expect(screen.getAllByRole("combobox", { name: "Role" })).toHaveLength(1)
     expect(screen.queryByRole("button", { name: /Remove slot/ })).toBeNull()
+  })
+
+  it("shows no slot error for Add slot or Remove before a submit, then shows them once one is made", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.click(screen.getByRole("button", { name: "Add slot" }))
+    await expectNoSlotErrors()
+    await user.click(screen.getByRole("button", { name: "Add slot" }))
+    await expectNoSlotErrors()
+    await user.click(screen.getByRole("button", { name: "Remove slot 2" }))
+    await expectNoSlotErrors()
+
+    // Two empty Writer slots left: a repeated pair, and no member on either.
+    await user.click(screen.getByRole("button", { name: "Create task" }))
+
+    expect(
+      await screen.findByText(
+        "The same member already has that role — remove one"
+      )
+    ).toBeInTheDocument()
+    for (const box of screen.getAllByRole("combobox", { name: "Member" })) {
+      expect(box).toHaveAttribute("aria-invalid", "true")
+    }
+    expect(createTaskAction).not.toHaveBeenCalled()
   })
 })
 
@@ -681,6 +792,17 @@ describe("TaskForm in edit mode", () => {
     expect(screen.getByLabelText("Title")).toHaveValue("My title")
   })
 
+  it("shows no slot error for two added slots before a save", async () => {
+    const user = userEvent.setup()
+    render(<EditPage />)
+
+    await user.click(screen.getByRole("button", { name: "Add slot" }))
+    await expectNoSlotErrors()
+    await user.click(screen.getByRole("button", { name: "Add slot" }))
+    await expectNoSlotErrors()
+    expect(memberBoxes()).toHaveLength(5)
+  })
+
   it("refuses a repeated role and member inline, as create does, keeping the values", async () => {
     const user = userEvent.setup()
     render(<EditPage />)
@@ -715,6 +837,21 @@ describe("TaskForm in edit mode", () => {
 
     expect(await screen.findByText("Add a title")).toBeInTheDocument()
     expect(screen.getByText("Enter a valid link")).toBeInTheDocument()
+    expect(updateTaskAction).not.toHaveBeenCalled()
+  })
+
+  it("shows a cleared Title's error once it is left, before any save", async () => {
+    const user = userEvent.setup()
+    render(<EditPage />)
+
+    await user.clear(screen.getByLabelText("Title"))
+    await user.tab()
+
+    expect(await screen.findByText("Add a title")).toBeInTheDocument()
+    expect(screen.getByLabelText("Title")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    )
     expect(updateTaskAction).not.toHaveBeenCalled()
   })
 

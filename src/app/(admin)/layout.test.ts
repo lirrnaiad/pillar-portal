@@ -8,6 +8,7 @@ const {
   AdminShell,
   AdminBannerSlot,
   NoticeToast,
+  OfflineToast,
   RedirectError,
 } = vi.hoisted(() => {
   // Like Next's redirect(), which requireAdmin calls, the mock throws.
@@ -21,6 +22,7 @@ const {
     AdminShell: vi.fn(() => null),
     AdminBannerSlot: vi.fn(() => null),
     NoticeToast: vi.fn(() => null),
+    OfflineToast: vi.fn(() => null),
     RedirectError,
   }
 })
@@ -31,6 +33,8 @@ vi.mock("./admin-shell", () => ({ AdminShell }))
 vi.mock("./admin-banners", () => ({ AdminBannerSlot }))
 // notice-toast.test.tsx covers what it shows.
 vi.mock("../notice-toast", () => ({ NoticeToast }))
+// offline-toast.test.tsx covers when it toasts.
+vi.mock("../offline-toast", () => ({ OfflineToast }))
 
 import type { CurrentMember } from "@/features/members"
 
@@ -62,7 +66,7 @@ describe("AdminLayout", () => {
     }
   )
 
-  it("renders the admin shell with the banner slot for an active editorial_admin member, with the notice-toast reader mounted before the page", async () => {
+  it("renders the admin shell with the banner slot for an active editorial_admin member, with the notice-toast reader and the offline toast mounted before the page", async () => {
     requireAdmin.mockResolvedValue(MEMBER)
 
     const element = await AdminLayout({ children: "page" })
@@ -79,6 +83,7 @@ describe("AdminLayout", () => {
             children: expect.objectContaining({ type: NoticeToast }),
           }),
         }),
+        expect.objectContaining({ type: OfflineToast }),
         "page",
       ],
     })
