@@ -1,7 +1,8 @@
 -- Tasks (AD-1, AD-2, AD-4, AD-19): create_task's definer/owner/search_path
 -- pins, the caller matrix (pending/staff/admin), RLS allow/deny on
--- tasks/task_assignments/activity, and the owner/slot validation the I/O
--- Matrix (spec-1-5-admin-task-creation.md) requires.
+-- tasks/task_assignments/activity, the owner/slot validation the I/O
+-- Matrix (spec-1-5-admin-task-creation.md) requires, and a finite due date
+-- (Story 3.9's tasks_due_at_finite).
 --
 -- Fixture auth users are created here, so the test doesn't depend on
 -- seed.sql; everything is rolled back. It runs locally and on staging
@@ -17,7 +18,7 @@ begin;
 set local role postgres;
 set local search_path = "$user", public, extensions;
 
-select plan(32);
+select plan(36);
 
 -- Fixtures.
 
@@ -78,7 +79,8 @@ create function pg_temp.create_task_as(
   p_owning_desk_id text,
   p_slots jsonb,
   p_reference_url text default null,
-  p_description text default null
+  p_description text default null,
+  p_due_at timestamptz default '2026-11-01T00:00:00+08'
 ) returns uuid
 language plpgsql as $$
 declare
@@ -92,7 +94,7 @@ begin
   set local role authenticated;
   select public.create_task(
     p_title, p_description, p_owning_section_id, p_owning_desk_id,
-    '2026-11-01T00:00:00+08'::timestamptz, p_reference_url, p_slots
+    p_due_at, p_reference_url, p_slots
   ) into v_id;
   set local role postgres;
   return v_id;
@@ -304,6 +306,46 @@ select throws_ok(
        'not-a-url') $$,
   '23514', null,
   'a malformed reference_url is rejected by tasks_reference_url_format'
+);
+
+-- A due date that isn't a real instant (Story 3.9): create_task, unchanged,
+-- reaches tasks_due_at_finite, whose 23514 inserts nothing.
+
+select is(
+  (select pg_get_constraintdef(c.oid) from pg_constraint c
+   where c.conrelid = 'public.tasks'::regclass
+     and c.conname = 'tasks_due_at_finite'),
+  'CHECK (isfinite(due_at))',
+  'tasks_due_at_finite exists on public.tasks and checks isfinite(due_at)'
+);
+
+select throws_ok(
+  $$ select pg_temp.create_task_as(
+       '00000000-0000-4000-9000-000000000003', 'Infinite due date',
+       null, 'layout',
+       pg_temp.one_slot('00000000-0000-4000-9000-000000000004'),
+       p_due_at => 'infinity') $$,
+  '23514',
+  'new row for relation "tasks" violates check constraint "tasks_due_at_finite"',
+  'create_task with an infinity due date is rejected by tasks_due_at_finite'
+);
+
+select throws_ok(
+  $$ select pg_temp.create_task_as(
+       '00000000-0000-4000-9000-000000000003', 'Minus infinite due date',
+       null, 'layout',
+       pg_temp.one_slot('00000000-0000-4000-9000-000000000004'),
+       p_due_at => '-infinity') $$,
+  '23514',
+  'new row for relation "tasks" violates check constraint "tasks_due_at_finite"',
+  'create_task with a -infinity due date is rejected by tasks_due_at_finite'
+);
+
+select is_empty(
+  $$ select 1 from public.tasks
+     where title in ('Infinite due date', 'Minus infinite due date')
+        or not isfinite(due_at) $$,
+  'neither refused create inserted a task, and no task has a non-finite due date'
 );
 
 -- RLS: active members (staff and admin) read every row of tasks,

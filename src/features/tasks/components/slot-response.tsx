@@ -23,7 +23,8 @@ type Response = keyof typeof SUCCESS_COPY
  * I'm on it / Can't take this, for one slot the viewer may answer (the page
  * renders this only for a slot in task_capabilities' respondable_slot_ids).
  * Can't take this opens an inline form for an optional reason: Enter hands
- * the slot back, Escape cancels. Nothing changes on screen until the
+ * the slot back, Escape cancels, and a reason the schema refuses shows its
+ * message inline and sends nothing. Nothing changes on screen until the
  * database has the answer: the page re-renders from revalidation, and this
  * component then goes away, so focus moves first to the slot's row
  * (`rowId`, an element with `tabIndex={-1}`).
@@ -48,6 +49,8 @@ export function SlotResponse({
     open,
     reason,
     setReason,
+    reasonError,
+    checkReason,
     rootRef,
     reasonRef,
     triggerRef,
@@ -57,6 +60,11 @@ export function SlotResponse({
   } = useHandBackPanel({ rowId, pending: isPending })
 
   function respond(response: Response) {
+    // Can't take this sends the reason, so it is parsed first; I'm on it
+    // sends none.
+    if (response === "needs_reassignment" && (isPending || !checkReason())) {
+      return
+    }
     run(
       () =>
         respondToSlotAction({
@@ -103,6 +111,7 @@ export function SlotResponse({
         <HandBackForm
           id={panelId}
           reason={reason}
+          reasonError={reasonError}
           onReasonChange={setReason}
           onSubmit={() => respond("needs_reassignment")}
           onCancel={cancel}

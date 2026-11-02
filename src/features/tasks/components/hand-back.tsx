@@ -17,7 +17,8 @@ import { useHandBackPanel } from "./use-hand-back-panel"
  * only for a slot in task_capabilities' hand_back_slot_ids). A secondary
  * button opens the same inline form as Can't take this; nothing changes on
  * screen until the database has the answer, and focus moves to the slot's row
- * (`rowId`) before the page re-renders without this component.
+ * (`rowId`) before the page re-renders without this component. A reason the
+ * schema refuses shows its message inline and sends nothing.
  */
 export function HandBack({
   slotId,
@@ -36,6 +37,8 @@ export function HandBack({
     open,
     reason,
     setReason,
+    reasonError,
+    checkReason,
     rootRef,
     reasonRef,
     triggerRef,
@@ -45,6 +48,7 @@ export function HandBack({
   } = useHandBackPanel({ rowId, pending: isPending })
 
   function submit() {
+    if (isPending || !checkReason()) return
     run(() => handBackSlotAction({ slotId, reason }), {
       onSuccess: () => {
         document.getElementById(rowId)?.focus()
@@ -71,6 +75,7 @@ export function HandBack({
         <HandBackForm
           id={panelId}
           reason={reason}
+          reasonError={reasonError}
           onReasonChange={setReason}
           onSubmit={submit}
           onCancel={cancel}

@@ -199,9 +199,9 @@ export function TaskForm({
     // get no onBlur, since opening one blurs its trigger and would flag it
     // mid-choice, so they wait for submit, then re-check on change. Under
     // this mode useFieldArray also re-checks `slots` after every Add slot and
-    // Remove, which would flag untouched slot rows (two empty slots read as a
-    // repeated pair, an empty member as an invalid id), so the slot errors
-    // render only once the form has been submitted.
+    // Remove, which would flag untouched slot rows (an empty member reads as
+    // "Choose a member"), so the slot errors render only once the form has
+    // been submitted.
     mode: "onTouched",
     resolver: task ? updateResolver : createResolver,
     defaultValues: task ? editValues(task) : emptyValues(),

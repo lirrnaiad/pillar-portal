@@ -337,6 +337,12 @@ function BoardColumn({
           ))}
         </ul>
       )}
+      {column === "done" && (
+        // getBoard reads only this window, so the count above is these cards.
+        <p className="px-3 pb-3 text-sm text-muted-foreground">
+          Showing tasks done in the last 30 days.
+        </p>
+      )}
     </section>
   )
 }

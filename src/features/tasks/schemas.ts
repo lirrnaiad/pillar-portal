@@ -21,36 +21,54 @@ const DESCRIPTION_MAX = 5000
 const REFERENCE_URL_MAX = 2048
 const REFERENCE_URL_PATTERN = /^https?:\/\/\S+$/
 
+// U+0000, or half of a surrogate pair with no other half: Postgres's text
+// can hold neither (22P05), and the action would record that as an
+// unexpected fault. With the `u` flag an emoji's pair is one code point, not
+// `\p{Cs}`, so it passes.
+const UNSAVABLE_CHARACTER = /[\u0000\p{Cs}]/u
+
+/** Refuses text Postgres can't store; chain it after any `.trim()`. */
+function savableText(text: z.ZodString) {
+  return text.refine((value) => !UNSAVABLE_CHARACTER.test(value), {
+    error: "This has a character that can't be saved — remove it.",
+  })
+}
+
 const slotSchema = z.object({
   role: z.enum(PRODUCTION_ROLES),
-  memberId: z.uuid(),
+  // An empty slot's "" too: the Select shows "Choose a member" until one is.
+  memberId: z.uuid({ error: "Choose a member" }),
 })
 
 // What the create and edit forms share: the fields, and at most 20 slots,
 // at least one. Zod refuses `.omit` on a refined object, so each schema
 // extends these and adds the refines it needs.
 const taskFieldsSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, { message: "Add a title" })
-    .max(TITLE_MAX, { message: `Keep the title under ${TITLE_MAX} characters` }),
-  description: z
-    .string()
-    .max(DESCRIPTION_MAX, {
+  title: savableText(
+    z
+      .string()
+      .trim()
+      .min(1, { message: "Add a title" })
+      .max(TITLE_MAX, {
+        message: `Keep the title under ${TITLE_MAX} characters`,
+      })
+  ),
+  description: savableText(
+    z.string().max(DESCRIPTION_MAX, {
       message: `Keep the description under ${DESCRIPTION_MAX} characters`,
     })
-    .nullable(),
+  ).nullable(),
   dueAt: z
     .string()
     .min(1, { message: "Add a due date" })
     .regex(DATETIME_LOCAL_PATTERN, { message: "Add a due date" }),
-  referenceUrl: z
-    .string()
-    .trim()
-    .max(REFERENCE_URL_MAX, { message: "That link is too long" })
-    .regex(REFERENCE_URL_PATTERN, { message: "Enter a valid link" })
-    .nullable(),
+  referenceUrl: savableText(
+    z
+      .string()
+      .trim()
+      .max(REFERENCE_URL_MAX, { message: "That link is too long" })
+      .regex(REFERENCE_URL_PATTERN, { message: "Enter a valid link" })
+  ).nullable(),
 })
 
 function slotsSchema<T extends z.ZodType>(slot: T) {
@@ -60,11 +78,15 @@ function slotsSchema<T extends z.ZodType>(slot: T) {
     .max(20, { message: "That's too many slots for one task" })
 }
 
-// The same (role, member) twice, which the database refuses too.
+// The same (role, member) twice, which the database refuses too. A slot with
+// no member yet is left out: it already shows "Choose a member", and two
+// blank slots aren't a repeat.
 function hasNoRepeatedPair(data: {
   slots: { role: string; memberId: string }[]
 }) {
-  const pairs = data.slots.map((slot) => `${slot.role}:${slot.memberId}`)
+  const pairs = data.slots
+    .filter((slot) => slot.memberId !== "")
+    .map((slot) => `${slot.role}:${slot.memberId}`)
   return new Set(pairs).size === pairs.length
 }
 
@@ -92,7 +114,10 @@ export const taskCreateSchema = taskFieldsSchema
     slots: slotsSchema(slotSchema),
   })
   .refine(
-    (data) => Number(data.owningSectionId !== null) + Number(data.owningDeskId !== null) === 1,
+    (data) =>
+      Number(data.owningSectionId !== null) +
+        Number(data.owningDeskId !== null) ===
+      1,
     { message: "Choose one owner", path: ["owningSectionId"] }
   )
   .refine(hasNoRepeatedPair, REPEATED_PAIR)
@@ -138,12 +163,14 @@ const REASON_MAX = 280
 export const slotRespondSchema = z.object({
   slotId: z.uuid(),
   response: z.enum(["on_it", "needs_reassignment"]),
-  reason: z
-    .string()
-    .trim()
-    .max(REASON_MAX, {
-      message: `Keep the reason under ${REASON_MAX} characters`,
-    })
+  reason: savableText(
+    z
+      .string()
+      .trim()
+      .max(REASON_MAX, {
+        message: `Keep the reason under ${REASON_MAX} characters`,
+      })
+  )
     .nullish()
     .transform((reason) => (reason ? reason : null)),
 })
@@ -178,11 +205,13 @@ export const REVISION_NOTE_MAX = 5000
  */
 export const taskSendBackSchema = z.object({
   taskId: z.uuid(),
-  note: z
-    .string()
-    .trim()
-    .min(1, { message: "Add a note so they know what to fix." })
-    .max(REVISION_NOTE_MAX),
+  note: savableText(
+    z
+      .string()
+      .trim()
+      .min(1, { message: "Add a note so they know what to fix." })
+      .max(REVISION_NOTE_MAX)
+  ),
 })
 
 /**

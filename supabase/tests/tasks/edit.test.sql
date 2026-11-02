@@ -14,7 +14,8 @@
 -- slot added between the two locks, the helper's shape, the constraint's
 -- mode). Since Story 3.3 each existing slot carries the member the form
 -- loaded (`loaded_member_id`): a mismatch or a missing one is tasks.stale,
--- and so is a save from a form loaded before a reassign_slot.
+-- and so is a save from a form loaded before a reassign_slot. Since Story
+-- 3.9 a non-finite due date is refused by tasks_due_at_finite (23514).
 --
 -- Fixtures follow delete.test.sql: auth users, tasks and slots are created
 -- here (tasks and slots inserted directly as `postgres`, so a test can start
@@ -29,7 +30,7 @@ begin;
 set local role postgres;
 set local search_path = "$user", public, extensions;
 
-select plan(71);
+select plan(74);
 
 -- Fixtures.
 
@@ -1159,6 +1160,51 @@ select set_eq(
      where task_id = '00000000-0000-4000-b000-000000000001' $$,
   $$ select * from b01_slots_before $$,
   'nor touched a slot'
+);
+
+-- A due date that isn't a real instant (Story 3.9): b01 as loaded, its text
+-- as saved above and only the due date changed, so update_task, unchanged,
+-- writes the row and tasks_due_at_finite refuses it with 23514.
+
+create temp table b01_due_before as
+select due_at from public.tasks where id = '00000000-0000-4000-b000-000000000001';
+
+select throws_ok(
+  format(
+    'select pg_temp.update_as(%L, %L, %L, %L, %L::timestamptz, %L, %L::jsonb)',
+    '00000000-0000-4000-a000-000000000004',
+    '00000000-0000-4000-b000-000000000001',
+    'Lay out the spread, v2', 'Two pages, the new grid.', 'infinity',
+    'https://example.com/v2',
+    pg_temp.loaded_slots('00000000-0000-4000-b000-000000000001')
+  ),
+  '23514',
+  'new row for relation "tasks" violates check constraint "tasks_due_at_finite"',
+  'update_task with an infinity due date is rejected by tasks_due_at_finite'
+);
+
+select throws_ok(
+  format(
+    'select pg_temp.update_as(%L, %L, %L, %L, %L::timestamptz, %L, %L::jsonb)',
+    '00000000-0000-4000-a000-000000000004',
+    '00000000-0000-4000-b000-000000000001',
+    'Lay out the spread, v2', 'Two pages, the new grid.', '-infinity',
+    'https://example.com/v2',
+    pg_temp.loaded_slots('00000000-0000-4000-b000-000000000001')
+  ),
+  '23514',
+  'new row for relation "tasks" violates check constraint "tasks_due_at_finite"',
+  'update_task with a -infinity due date is rejected by tasks_due_at_finite'
+);
+
+select results_eq(
+  $$ select t.due_at, t.due_at = (select b.due_at from b01_due_before b),
+            (select count(*)::int from public.activity v
+             where v.entity_id = t.id and v.action = 'updated')
+     from public.tasks t
+     where t.id = '00000000-0000-4000-b000-000000000001' $$,
+  $$ values ('2026-11-05T17:00:00+08'::timestamptz, true, 1) $$,
+  'neither refused update changed the due date or logged anything'
 );
 
 -- The approver is checked before the slot list, and the task before the

@@ -17,6 +17,7 @@ import { getBoard, getBoardOwners } from "./queries/board"
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.useRealTimers()
 })
 
 type Call = { method: string; args: unknown[] }
@@ -85,7 +86,7 @@ function mockBoard(fixture: Fixture = {}) {
   })
   const recorder = (calls: Call[], result: () => unknown) => {
     const builder: Record<string, unknown> = {}
-    for (const method of ["select", "order", "eq", "not", "in"]) {
+    for (const method of ["select", "order", "eq", "not", "in", "or"]) {
       builder[method] = (...args: unknown[]) => {
         calls.push({ method, args })
         return builder
@@ -137,6 +138,47 @@ describe("getBoard", () => {
     expect(taskCalls.filter((call) => call.method === method)).toEqual([
       { method, args },
     ])
+  })
+
+  it.each([
+    { kind: "all" } as const,
+    { kind: "articles" } as const,
+    { kind: "desk", id: "layout" } as const,
+  ])(
+    "keeps every task that isn't Done and Done ones from the last 30 days, for %j",
+    async (filter) => {
+      vi.useFakeTimers({ now: new Date("2026-11-02T09:15:30.250Z") })
+      const { taskCalls } = mockBoard()
+
+      await getBoard(filter)
+
+      expect(taskCalls.filter((call) => call.method === "or")).toEqual([
+        {
+          method: "or",
+          args: ["column.neq.done,done_at.gte.2026-10-03T09:15:30.250Z"],
+        },
+      ])
+    }
+  )
+
+  it("dates the cutoff and each card's Overdue badge from the same now", async () => {
+    // T1 is due Jan 1, 2026: overdue from the next instant on.
+    vi.useFakeTimers({ now: new Date("2026-01-01T00:00:00.000Z") })
+    const { taskCalls, rpc } = mockBoard()
+    // The clock moves past T1's due date while the capabilities load, so a
+    // second `new Date()` for the cards would mark T1 overdue.
+    const capabilities = rpc.getMockImplementation()
+    rpc.mockImplementationOnce(async (name, args) => {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.001Z"))
+      return capabilities!(name, args)
+    })
+
+    const [first] = await getBoard({ kind: "all" })
+
+    expect(taskCalls.find((call) => call.method === "or")?.args).toEqual([
+      "column.neq.done,done_at.gte.2025-12-02T00:00:00.000Z",
+    ])
+    expect(first?.overdue).toBe(false)
   })
 
   it("applies no owner filter for All", async () => {
