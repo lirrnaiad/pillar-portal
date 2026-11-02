@@ -3,6 +3,7 @@
 import { useId, type Ref } from "react"
 
 import { Button } from "@/components/ui/button"
+import { FieldError } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
@@ -15,11 +16,13 @@ export const REASON_MAX = 280
  * The inline hand-back form shared by Can't take this (an awaiting slot) and
  * Hand back (an On it slot): the copy, an optional reason, Hand it back and
  * Cancel. Enter submits, Escape cancels. The parent owns the state and the
- * action, and moves focus.
+ * action, and moves focus. A `reasonError` shows under the input, which is
+ * then marked invalid and described by it.
  */
 export function HandBackForm({
   id,
   reason,
+  reasonError = null,
   onReasonChange,
   onSubmit,
   onCancel,
@@ -29,6 +32,8 @@ export function HandBackForm({
 }: {
   id?: string
   reason: string
+  /** The reason's inline error, or null. */
+  reasonError?: string | null
   onReasonChange: (reason: string) => void
   onSubmit: () => void
   onCancel: () => void
@@ -39,6 +44,8 @@ export function HandBackForm({
 }) {
   const reasonId = useId()
   const hintId = useId()
+  const errorId = useId()
+  const invalid = reasonError !== null
 
   return (
     <form
@@ -66,12 +73,14 @@ export function HandBackForm({
           id={reasonId}
           value={reason}
           maxLength={REASON_MAX}
-          aria-describedby={hintId}
+          aria-invalid={invalid}
+          aria-describedby={invalid ? `${errorId} ${hintId}` : hintId}
           aria-disabled={pending || undefined}
           readOnly={pending}
           className={cn("min-h-11 bg-card", PENDING_STYLE)}
           onChange={(event) => onReasonChange(event.target.value)}
         />
+        {invalid && <FieldError id={errorId}>{reasonError}</FieldError>}
         <p id={hintId} className="text-sm text-muted-foreground">
           Only you and the task&apos;s approver see this.
         </p>

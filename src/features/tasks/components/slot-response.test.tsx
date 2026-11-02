@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest"
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -361,6 +367,135 @@ describe("SlotResponse", () => {
     expect(cantTake()).toHaveAttribute("aria-expanded", "false")
     expect(cantTake()).toHaveFocus()
     expect(respondToSlotAction).not.toHaveBeenCalled()
+  })
+
+  // Story 3.9: a reason Postgres can't store (22P05) is refused here, so the
+  // action never records it as a fault.
+  describe("a reason that can't be saved", () => {
+    const UNSAVABLE = "This has a character that can't be saved — remove it."
+
+    // Set as a browser would after a paste: one value and an input event
+    // (userEvent types a lone surrogate as nothing).
+    function enterReason(value: string) {
+      fireEvent.change(reasonInput(), { target: { value } })
+    }
+
+    it.each([
+      ["a lone surrogate", "\uD800"],
+      ["U+0000", "Out\u0000sick"],
+    ])(
+      "shows %s's copy under the reason on Hand it back, keeps focus there, and calls nothing",
+      async (_name, value) => {
+        const user = userEvent.setup()
+        renderResponse()
+
+        await user.click(cantTake())
+        enterReason(value)
+        await user.click(screen.getByRole("button", { name: "Hand it back" }))
+
+        const error = screen.getByRole("alert")
+        expect(error).toHaveTextContent(UNSAVABLE)
+        expect(reasonInput()).toHaveAttribute("aria-invalid", "true")
+        expect(reasonInput().getAttribute("aria-describedby")).toContain(
+          error.id
+        )
+        expect(reasonInput()).toHaveAccessibleDescription(
+          expect.stringContaining(UNSAVABLE)
+        )
+        expect(
+          reasonInput().compareDocumentPosition(error) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy()
+        expect(reasonInput()).toHaveFocus()
+        expect(reasonInput()).toHaveValue(value)
+        expect(respondToSlotAction).not.toHaveBeenCalled()
+        expect(toastError).not.toHaveBeenCalled()
+      }
+    )
+
+    it("refuses it on Enter too", async () => {
+      const user = userEvent.setup()
+      renderResponse()
+
+      await user.click(cantTake())
+      enterReason("\uD800")
+      await user.keyboard("{Enter}")
+
+      expect(screen.getByRole("alert")).toHaveTextContent(UNSAVABLE)
+      expect(reasonInput()).toHaveFocus()
+      expect(respondToSlotAction).not.toHaveBeenCalled()
+    })
+
+    it("clears the copy once the reason changes, then hands back the fixed one", async () => {
+      const user = userEvent.setup()
+      respondToSlotAction.mockResolvedValue({
+        ok: true,
+        data: { state: "needs_reassignment" },
+      })
+      renderResponse()
+
+      await user.click(cantTake())
+      enterReason("Busy\uD800")
+      await user.keyboard("{Enter}")
+      expect(screen.getByRole("alert")).toBeInTheDocument()
+
+      enterReason("Busy 😀")
+      expect(screen.queryByRole("alert")).toBeNull()
+      expect(reasonInput()).toHaveAttribute("aria-invalid", "false")
+      await user.keyboard("{Enter}")
+
+      expect(respondToSlotAction).toHaveBeenCalledExactlyOnceWith({
+        slotId: SLOT_ID,
+        response: "needs_reassignment",
+        reason: "Busy 😀",
+      })
+    })
+
+    it("drops the copy with the reason on Cancel", async () => {
+      const user = userEvent.setup()
+      renderResponse()
+
+      await user.click(cantTake())
+      enterReason("\uD800")
+      await user.keyboard("{Enter}")
+      await user.click(screen.getByRole("button", { name: "Cancel" }))
+      await user.click(cantTake())
+
+      expect(reasonInput()).toHaveValue("")
+      expect(reasonInput()).toHaveAttribute("aria-invalid", "false")
+      expect(screen.queryByRole("alert")).toBeNull()
+    })
+
+    it("still answers I'm on it, which sends no reason", async () => {
+      const user = userEvent.setup()
+      respondToSlotAction.mockResolvedValue({
+        ok: true,
+        data: { state: "on_it" },
+      })
+      renderResponse()
+
+      await user.click(cantTake())
+      enterReason("\uD800")
+      await user.click(onIt())
+
+      expect(respondToSlotAction).toHaveBeenCalledExactlyOnceWith({
+        slotId: SLOT_ID,
+        response: "on_it",
+        reason: null,
+      })
+    })
+
+    it("has no axe violations with the copy showing", async () => {
+      const user = userEvent.setup()
+      const { container } = renderResponse()
+
+      await user.click(cantTake())
+      enterReason("\uD800")
+      await user.keyboard("{Enter}")
+
+      expect(screen.getByRole("alert")).toBeInTheDocument()
+      expect(await axeViolations(container)).toEqual([])
+    })
   })
 
   it("has no axe violations, closed or open", async () => {

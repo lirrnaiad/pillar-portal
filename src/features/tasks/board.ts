@@ -78,6 +78,18 @@ export function boardEmptyMessage(
   }
 }
 
+const DONE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+
+/**
+ * The oldest `done_at` the Board's Done column shows, as ISO: `now` minus 30
+ * × 24 hours, an instant, so no time zone is involved. The edge is inclusive
+ * (`done_at >= cutoff`). Only the Board reads through it: Task detail and
+ * every other read still find an older Done task.
+ */
+export function boardDoneCutoff(now: Date): string {
+  return new Date(now.getTime() - DONE_WINDOW_MS).toISOString()
+}
+
 /**
  * The Board row's height, shared by the Board and its skeleton so the swap
  * between them doesn't jump: the rest of the viewport under the header, h1

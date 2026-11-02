@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest"
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -313,6 +319,27 @@ describe("TaskReview", () => {
     expect(
       screen.queryByText("Add a note so they know what to fix.")
     ).toBeNull()
+  })
+
+  // Story 3.9: a note Postgres can't store (22P05) is refused the same way.
+  it.each([
+    ["U+0000", "Fix\u0000the captions"],
+    ["a lone surrogate", "\uD800"],
+  ])("shows %s's copy inline and calls nothing", async (_name, value) => {
+    const user = userEvent.setup()
+    render(<Page canReview />)
+
+    await user.click(sendBackTrigger())
+    // One value and an input event, as a paste gives.
+    fireEvent.change(noteInput(), { target: { value } })
+    await user.click(screen.getByRole("button", { name: "Send back" }))
+
+    const copy = "This has a character that can't be saved — remove it."
+    expect(screen.getByRole("alert")).toHaveTextContent(copy)
+    expect(noteInput()).toHaveAttribute("aria-invalid", "true")
+    expect(noteInput()).toHaveAccessibleDescription(copy)
+    expect(noteInput()).toHaveFocus()
+    expect(sendBackTaskAction).not.toHaveBeenCalled()
   })
 
   it("sends the task back with the note, then toasts, closes and focuses the status", async () => {

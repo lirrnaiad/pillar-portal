@@ -2,7 +2,11 @@ import "server-only"
 
 import { createClient } from "@/lib/supabase/server"
 
-import type { OwnerFilter, TaskOwnerOption } from "../board"
+import {
+  boardDoneCutoff,
+  type OwnerFilter,
+  type TaskOwnerOption,
+} from "../board"
 import type { TaskColumn } from "../status"
 import {
   nameMap,
@@ -51,7 +55,11 @@ export type BoardCard = TaskCardData & {
 }
 
 /**
- * Every task the filter names, as cards ordered by due date then id. The
+ * Every task the filter names, as cards ordered by due date then id, except
+ * a Done task done before boardDoneCutoff (30 days back from one `now`,
+ * which also dates each card's Overdue badge). That window, in the query
+ * itself, keeps the read far below PostgREST's row cap however many tasks a
+ * semester finishes, and the Done column's count is the cards it shows. The
  * slots come embedded in the tasks query (a Board can hold hundreds of
  * tasks, too many for an `.in()` list); with no tasks it stops there,
  * otherwise task_capabilities (whose row gives each card its `moves`) and
@@ -62,8 +70,12 @@ export type BoardCard = TaskCardData & {
  */
 export async function getBoard(filter: OwnerFilter): Promise<BoardCard[]> {
   const supabase = await createClient()
+  const now = new Date()
 
-  const tasksResult = await withOwnerFilter(taskCardsQuery(supabase), filter)
+  const tasksResult = await withOwnerFilter(
+    taskCardsQuery(supabase),
+    filter
+  ).or(`column.neq.done,done_at.gte.${boardDoneCutoff(now)}`)
   if (tasksResult.error) {
     throw new Error("getBoard: reading tasks failed", {
       cause: tasksResult.error,
@@ -92,7 +104,6 @@ export async function getBoard(filter: OwnerFilter): Promise<BoardCard[]> {
     (capabilitiesResult.data ?? []).map((row) => [row.task_id, row])
   )
 
-  const now = new Date()
   return tasks.map((task) => {
     const capabilities = capabilitiesByTask.get(task.id)
     return {

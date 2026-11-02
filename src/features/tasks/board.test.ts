@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  boardDoneCutoff,
   boardEmptyMessage,
   ownerFilterParam,
   parseOwnerFilterParam,
@@ -63,5 +64,31 @@ describe("boardEmptyMessage", () => {
 
   it("is null for All, whose columns show their own empty state", () => {
     expect(boardEmptyMessage({ kind: "all" }, OWNERS)).toBeNull()
+  })
+})
+
+describe("boardDoneCutoff", () => {
+  const NOW = new Date("2026-11-02T09:15:30.250Z")
+
+  // The Board keeps a Done task when done_at >= the cutoff (PostgREST's gte).
+  const onBoard = (doneAt: string) =>
+    new Date(doneAt).getTime() >= new Date(boardDoneCutoff(NOW)).getTime()
+
+  it("is now minus exactly 30 × 24 hours, as ISO", () => {
+    expect(boardDoneCutoff(NOW)).toBe("2026-10-03T09:15:30.250Z")
+  })
+
+  it("keeps a task done exactly 30 days ago: the edge is inclusive", () => {
+    expect(onBoard("2026-10-03T09:15:30.250Z")).toBe(true)
+  })
+
+  it("drops a task done 30 days and 1 second ago", () => {
+    expect(onBoard("2026-10-03T09:15:29.250Z")).toBe(false)
+  })
+
+  it("counts hours, not calendar days, so a time zone never moves it", () => {
+    expect(
+      new Date(NOW).getTime() - new Date(boardDoneCutoff(NOW)).getTime()
+    ).toBe(30 * 24 * 60 * 60 * 1000)
   })
 })

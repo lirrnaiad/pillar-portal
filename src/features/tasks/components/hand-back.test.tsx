@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest"
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import axe from "axe-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -215,6 +221,52 @@ describe("HandBack", () => {
     rerender(<HandBackRow canHandBack={false} />)
     expect(document.getElementById(ROW_ID)).toHaveFocus()
   })
+
+  // Story 3.9: the same inline refusal as Can't take this.
+  it.each([
+    ["a lone surrogate", "\uD800"],
+    ["U+0000", "Out\u0000sick"],
+  ])(
+    "shows %s's copy under the reason, keeps focus there, and calls nothing",
+    async (_name, value) => {
+      const user = userEvent.setup()
+      const { container } = renderHandBack()
+
+      await user.click(trigger())
+      // One value and an input event, as a paste gives.
+      fireEvent.change(reasonInput(), { target: { value } })
+      await user.click(screen.getByRole("button", { name: "Hand it back" }))
+
+      const error = screen.getByRole("alert")
+      expect(error).toHaveTextContent(
+        "This has a character that can't be saved — remove it."
+      )
+      expect(reasonInput()).toHaveAttribute("aria-invalid", "true")
+      expect(reasonInput().getAttribute("aria-describedby")).toContain(error.id)
+      expect(
+        reasonInput().compareDocumentPosition(error) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+      expect(reasonInput()).toHaveFocus()
+      expect(handBackSlotAction).not.toHaveBeenCalled()
+      expect(await axeViolations(container)).toEqual([])
+
+      // Once the reason changes the copy goes, and the fixed one is sent.
+      handBackSlotAction.mockResolvedValue({
+        ok: true,
+        data: { state: "needs_reassignment" },
+      })
+      fireEvent.change(reasonInput(), { target: { value: "Out sick 😀" } })
+      expect(screen.queryByRole("alert")).toBeNull()
+      await user.keyboard("{Enter}")
+      await waitFor(() =>
+        expect(handBackSlotAction).toHaveBeenCalledExactlyOnceWith({
+          slotId: SLOT_ID,
+          reason: "Out sick 😀",
+        })
+      )
+    }
+  )
 
   it("toasts the generic copy when the call throws", async () => {
     const user = userEvent.setup()

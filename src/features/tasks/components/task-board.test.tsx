@@ -161,6 +161,46 @@ describe("TaskBoard", () => {
     expect(within(column("To Do")).queryByText("Nothing here")).toBeNull()
   })
 
+  const DONE_NOTE = "Showing tasks done in the last 30 days."
+  const DONE = card(7, { title: "Print the issue", column: "done" })
+
+  it("ends an empty Done column with the 30-day note, below 'Nothing here'", () => {
+    render(<TaskBoard cards={CARDS} />)
+
+    const note = within(column("Done")).getByText(DONE_NOTE)
+    expect(note.tagName).toBe("P")
+    expect(note).toHaveClass("text-sm", "text-muted-foreground")
+    expect(column("Done").lastElementChild).toBe(note)
+    expect(
+      within(column("Done"))
+        .getByText("Nothing here")
+        .compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it("ends a Done column with cards with the note, below them, and counts only the cards", () => {
+    render(<TaskBoard cards={[...CARDS, DONE]} />)
+
+    const note = within(column("Done")).getByText(DONE_NOTE)
+    expect(column("Done").lastElementChild).toBe(note)
+    expect(
+      within(column("Done")).getByRole("list").compareDocumentPosition(note) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(
+      within(column("Done")).getByRole("heading", { level: 2 })
+    ).toHaveTextContent("Done1, 1 task")
+  })
+
+  it("shows the note only in the Done column", () => {
+    render(<TaskBoard cards={[...CARDS, DONE]} />)
+
+    expect(screen.getAllByText(DONE_NOTE)).toHaveLength(1)
+    for (const label of ["To Do", "Doing", "For Review"]) {
+      expect(within(column(label)).queryByText(DONE_NOTE)).toBeNull()
+    }
+  })
+
   it("puts the columns in one focusable, named region so a keyboard can scroll it", () => {
     render(<TaskBoard cards={CARDS} />)
 

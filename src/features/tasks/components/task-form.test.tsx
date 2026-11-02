@@ -450,18 +450,61 @@ describe("TaskForm", () => {
     await user.click(screen.getByRole("button", { name: "Remove slot 2" }))
     await expectNoSlotErrors()
 
-    // Two empty Writer slots left: a repeated pair, and no member on either.
+    // Two empty Writer slots left: no member on either, which isn't a
+    // repeated pair (Story 3.9).
+    await user.click(screen.getByRole("button", { name: "Create task" }))
+
+    const slotErrors = await screen.findAllByText("Choose a member", {
+      selector: "[data-slot=field-error]",
+    })
+    expect(slotErrors).toHaveLength(2)
+    for (const box of screen.getAllByRole("combobox", { name: "Member" })) {
+      expect(box).toHaveAttribute("aria-invalid", "true")
+    }
+    expect(
+      screen.queryByText("The same member already has that role — remove one")
+    ).toBeNull()
+    expect(screen.queryByText("Invalid UUID")).toBeNull()
+    expect(createTaskAction).not.toHaveBeenCalled()
+  })
+
+  it("refuses a title Postgres can't store inline, and calls nothing", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await fillMinimalValidForm(user)
+    // One value and an input event, as the staging check sets it.
+    fireEvent.input(screen.getByLabelText("Title"), {
+      target: { value: "a\u0000b" },
+    })
     await user.click(screen.getByRole("button", { name: "Create task" }))
 
     expect(
       await screen.findByText(
-        "The same member already has that role — remove one"
+        "This has a character that can't be saved — remove it."
       )
     ).toBeInTheDocument()
-    for (const box of screen.getAllByRole("combobox", { name: "Member" })) {
-      expect(box).toHaveAttribute("aria-invalid", "true")
-    }
+    expect(screen.getByLabelText("Title")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    )
     expect(createTaskAction).not.toHaveBeenCalled()
+  })
+
+  it("creates a task whose title holds an emoji", async () => {
+    createTaskAction.mockResolvedValue({ ok: true, data: { id: "task-1" } })
+    const user = userEvent.setup()
+    renderForm()
+
+    await fillMinimalValidForm(user)
+    await user.clear(screen.getByLabelText("Title"))
+    await user.type(screen.getByLabelText("Title"), "Done 😀")
+    await user.click(screen.getByRole("button", { name: "Create task" }))
+
+    await waitFor(() => expect(createTaskAction).toHaveBeenCalledOnce())
+    expect(createTaskAction.mock.calls[0]?.[0]).toMatchObject({
+      title: "Done 😀",
+    })
   })
 })
 

@@ -10,6 +10,7 @@ vi.mock("@/lib/env.client", () => ({
 
 const {
   REVISION_NOTE_MAX,
+  slotHandBackSchema,
   slotReassignSchema,
   slotRespondSchema,
   taskCreateSchema,
@@ -28,7 +29,10 @@ const VALID = {
   dueAt: "2026-10-31T23:30",
   referenceUrl: null,
   slots: [
-    { role: "layout_artist" as const, memberId: "00000000-0000-4000-8000-000000000001" },
+    {
+      role: "layout_artist" as const,
+      memberId: "00000000-0000-4000-8000-000000000001",
+    },
   ],
 }
 
@@ -71,7 +75,9 @@ describe("taskCreateSchema", () => {
     const issues = issuesFor({ ...VALID, owningDeskId: "layout" })
     expect(
       issues.some(
-        (i) => i.path.join(".") === "owningSectionId" && i.message === "Choose one owner"
+        (i) =>
+          i.path.join(".") === "owningSectionId" &&
+          i.message === "Choose one owner"
       )
     ).toBe(true)
   })
@@ -80,7 +86,9 @@ describe("taskCreateSchema", () => {
     const issues = issuesFor({ ...VALID, owningSectionId: null })
     expect(
       issues.some(
-        (i) => i.path.join(".") === "owningSectionId" && i.message === "Choose one owner"
+        (i) =>
+          i.path.join(".") === "owningSectionId" &&
+          i.message === "Choose one owner"
       )
     ).toBe(true)
   })
@@ -90,7 +98,9 @@ describe("taskCreateSchema", () => {
     (dueAt) => {
       const issues = issuesFor({ ...VALID, dueAt })
       expect(
-        issues.some((i) => i.path.join(".") === "dueAt" && i.message === "Add a due date")
+        issues.some(
+          (i) => i.path.join(".") === "dueAt" && i.message === "Add a due date"
+        )
       ).toBe(true)
     }
   )
@@ -112,7 +122,8 @@ describe("taskCreateSchema", () => {
     const issues = issuesFor({ ...VALID, slots: [] })
     expect(
       issues.some(
-        (i) => i.path.join(".") === "slots" && i.message === "Add at least one slot"
+        (i) =>
+          i.path.join(".") === "slots" && i.message === "Add at least one slot"
       )
     ).toBe(true)
   })
@@ -130,7 +141,9 @@ describe("taskCreateSchema", () => {
       ...VALID,
       slots: [{ role: "layout_artist", memberId: "not-a-uuid" }],
     })
-    expect(issues.some((i) => i.path.join(".") === "slots.0.memberId")).toBe(true)
+    expect(issues.some((i) => i.path.join(".") === "slots.0.memberId")).toBe(
+      true
+    )
   })
 
   it("rejects more than 20 slots", () => {
@@ -174,9 +187,14 @@ const SLOT_ID = "00000000-0000-4000-8000-000000000011"
 const TASK_ID = "00000000-0000-4000-8000-000000000021"
 
 describe("slotRespondSchema", () => {
-  it.each(["on_it", "needs_reassignment"])("accepts the %s response", (response) => {
-    expect(slotRespondSchema.safeParse({ slotId: SLOT_ID, response }).success).toBe(true)
-  })
+  it.each(["on_it", "needs_reassignment"])(
+    "accepts the %s response",
+    (response) => {
+      expect(
+        slotRespondSchema.safeParse({ slotId: SLOT_ID, response }).success
+      ).toBe(true)
+    }
+  )
 
   it("refuses awaiting_response, which isn't a response", () => {
     const result = slotRespondSchema.safeParse({
@@ -187,7 +205,10 @@ describe("slotRespondSchema", () => {
   })
 
   it("refuses a slot id that isn't a UUID", () => {
-    const result = slotRespondSchema.safeParse({ slotId: "abc", response: "on_it" })
+    const result = slotRespondSchema.safeParse({
+      slotId: "abc",
+      response: "on_it",
+    })
     expect(result.success).toBe(false)
   })
 
@@ -200,14 +221,17 @@ describe("slotRespondSchema", () => {
     expect(result.reason).toBe("Exams all week")
   })
 
-  it.each([undefined, null, "", "   \t\n "])("turns a blank reason (%j) into null", (reason) => {
-    const result = slotRespondSchema.parse({
-      slotId: SLOT_ID,
-      response: "needs_reassignment",
-      reason,
-    })
-    expect(result.reason).toBeNull()
-  })
+  it.each([undefined, null, "", "   \t\n "])(
+    "turns a blank reason (%j) into null",
+    (reason) => {
+      const result = slotRespondSchema.parse({
+        slotId: SLOT_ID,
+        response: "needs_reassignment",
+        reason,
+      })
+      expect(result.reason).toBeNull()
+    }
+  )
 
   it("accepts a 280-character reason, counted after trimming", () => {
     const result = slotRespondSchema.safeParse({
@@ -235,18 +259,26 @@ describe("slotRespondSchema", () => {
 })
 
 describe("taskMoveSchema", () => {
-  it.each(["to_do", "doing", "for_review", "done"])("accepts a move to %s", (toColumn) => {
-    expect(taskMoveSchema.safeParse({ taskId: TASK_ID, toColumn }).success).toBe(true)
-  })
+  it.each(["to_do", "doing", "for_review", "done"])(
+    "accepts a move to %s",
+    (toColumn) => {
+      expect(
+        taskMoveSchema.safeParse({ taskId: TASK_ID, toColumn }).success
+      ).toBe(true)
+    }
+  )
 
   it("refuses a column that doesn't exist", () => {
     expect(
-      taskMoveSchema.safeParse({ taskId: TASK_ID, toColumn: "archived" }).success
+      taskMoveSchema.safeParse({ taskId: TASK_ID, toColumn: "archived" })
+        .success
     ).toBe(false)
   })
 
   it("refuses a task id that isn't a UUID", () => {
-    expect(taskMoveSchema.safeParse({ taskId: "abc", toColumn: "doing" }).success).toBe(false)
+    expect(
+      taskMoveSchema.safeParse({ taskId: "abc", toColumn: "doing" }).success
+    ).toBe(false)
   })
 })
 
@@ -433,7 +465,11 @@ describe("taskUpdateSchema", () => {
       "description",
     ],
     ["a malformed due date", { dueAt: "2026-10-31" }, "dueAt"],
-    ["a malformed reference link", { referenceUrl: "not-a-url" }, "referenceUrl"],
+    [
+      "a malformed reference link",
+      { referenceUrl: "not-a-url" },
+      "referenceUrl",
+    ],
     ["no slots", { slots: [] }, "slots"],
     [
       "a slot id that isn't a UUID",
@@ -558,5 +594,194 @@ describe("slotReassignSchema", () => {
     expect(
       slotReassignSchema.safeParse({ ...REASSIGN, ...change }).success
     ).toBe(false)
+  })
+})
+
+// Story 3.9: text Postgres can't store (22P05) is refused inline, before any
+// action runs.
+describe("characters that can't be saved", () => {
+  const UNSAVABLE = "This has a character that can't be saved — remove it."
+  const BAD = [
+    ["U+0000", "a\u0000b"],
+    ["a lone high surrogate", "\uD800"],
+    ["a lone low surrogate", "x\uDC00y"],
+    ["a pair in the wrong order", "\uDE00\uD83D"],
+    ["U+0000 between spaces that trim removes", "  a\u0000b  "],
+  ] as const
+  const EMOJI = "Done 😀"
+
+  const EDIT = {
+    taskId: TASK_ID,
+    title: "Lay out the spread",
+    description: null,
+    dueAt: "2026-10-31T23:30",
+    referenceUrl: null,
+    slots: [{ role: "writer" as const, memberId: VALID.slots[0].memberId }],
+  }
+
+  // A link holding the value: spaces inside it become dashes (a link has
+  // none), and the ones around it stay, for trim.
+  const asLink = (value: string) => {
+    const inner = value.trim()
+    return value.replace(
+      inner,
+      `https://example.com/${inner.replaceAll(" ", "-")}`
+    )
+  }
+
+  // Each field, with the value put where that schema reads it.
+  const FIELDS = [
+    [
+      "the create title",
+      taskCreateSchema,
+      (v: string) => ({ ...VALID, title: v }),
+      "title",
+    ],
+    [
+      "the create description",
+      taskCreateSchema,
+      (v: string) => ({ ...VALID, description: v }),
+      "description",
+    ],
+    [
+      "the create reference link",
+      taskCreateSchema,
+      (v: string) => ({ ...VALID, referenceUrl: asLink(v) }),
+      "referenceUrl",
+    ],
+    [
+      "the edit title",
+      taskUpdateSchema,
+      (v: string) => ({ ...EDIT, title: v }),
+      "title",
+    ],
+    [
+      "the edit description",
+      taskUpdateSchema,
+      (v: string) => ({ ...EDIT, description: v }),
+      "description",
+    ],
+    [
+      "the edit reference link",
+      taskUpdateSchema,
+      (v: string) => ({ ...EDIT, referenceUrl: asLink(v) }),
+      "referenceUrl",
+    ],
+    [
+      "the Can't take this reason",
+      slotRespondSchema,
+      (v: string) => ({
+        slotId: SLOT_ID,
+        response: "needs_reassignment",
+        reason: v,
+      }),
+      "reason",
+    ],
+    [
+      "the hand-back reason",
+      slotHandBackSchema,
+      (v: string) => ({ slotId: SLOT_ID, reason: v }),
+      "reason",
+    ],
+    [
+      "the send-back note",
+      taskSendBackSchema,
+      (v: string) => ({ taskId: TASK_ID, note: v }),
+      "note",
+    ],
+  ] as const
+
+  describe.each(FIELDS)("%s", (_field, schema, input, path) => {
+    it.each(BAD)(
+      "refuses %s with the inline copy, on the field alone",
+      (_name, value) => {
+        const result = schema.safeParse(input(value))
+        expect(result.success).toBe(false)
+        expect(result.error?.issues).toEqual([
+          expect.objectContaining({ path: [path], message: UNSAVABLE }),
+        ])
+      }
+    )
+
+    it("accepts an emoji, a valid surrogate pair", () => {
+      expect(schema.safeParse(input(EMOJI)).success).toBe(true)
+    })
+  })
+
+  it("keeps the emoji as typed", () => {
+    expect(taskCreateSchema.parse({ ...VALID, title: EMOJI }).title).toBe(EMOJI)
+    expect(
+      slotHandBackSchema.parse({ slotId: SLOT_ID, reason: EMOJI }).reason
+    ).toBe(EMOJI)
+    expect(
+      taskSendBackSchema.parse({ taskId: TASK_ID, note: EMOJI }).note
+    ).toBe(EMOJI)
+  })
+})
+
+describe("slots with no member yet", () => {
+  const EMPTY = { role: "writer" as const, memberId: "" }
+
+  it("shows Choose a member, not zod's Invalid UUID", () => {
+    expect(issuesFor({ ...VALID, slots: [EMPTY] })).toEqual([
+      expect.objectContaining({
+        path: ["slots", 0, "memberId"],
+        message: "Choose a member",
+      }),
+    ])
+  })
+
+  it.each([
+    ["create", taskCreateSchema, VALID],
+    [
+      "edit",
+      taskUpdateSchema,
+      {
+        taskId: TASK_ID,
+        title: "Lay out the spread",
+        description: null,
+        dueAt: "2026-10-31T23:30",
+        referenceUrl: null,
+      },
+    ],
+  ] as const)(
+    "gives two empty slots Choose a member each, and no repeated-pair error, on %s",
+    (_mode, schema, fields) => {
+      const result = schema.safeParse({ ...fields, slots: [EMPTY, EMPTY] })
+      expect(result.error?.issues).toEqual([
+        expect.objectContaining({
+          path: ["slots", 0, "memberId"],
+          message: "Choose a member",
+        }),
+        expect.objectContaining({
+          path: ["slots", 1, "memberId"],
+          message: "Choose a member",
+        }),
+      ])
+    }
+  )
+
+  it("doesn't pair an empty slot with a chosen one of the same role", () => {
+    const issues = issuesFor({
+      ...VALID,
+      slots: [{ role: "writer", memberId: VALID.slots[0].memberId }, EMPTY],
+    })
+    expect(issues.map((issue) => issue.path.join("."))).toEqual([
+      "slots.1.memberId",
+    ])
+  })
+
+  it("still refuses a real pair: the same role and member twice", () => {
+    const pair = { role: "writer" as const, memberId: VALID.slots[0].memberId }
+    expect(issuesFor({ ...VALID, slots: [pair, pair, EMPTY] })).toEqual([
+      expect.objectContaining({
+        path: ["slots", 2, "memberId"],
+        message: "Choose a member",
+      }),
+      expect.objectContaining({
+        path: ["slots"],
+        message: "The same member already has that role — remove one",
+      }),
+    ])
   })
 })
