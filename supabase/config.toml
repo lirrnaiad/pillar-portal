@@ -160,8 +160,9 @@ max_indexes = 5
 
 [auth]
 # Auth settings are code (AD-7). `supabase config push` applies them to the
-# linked project, with the overrides in [remotes.staging] at the end of this
-# file; run `supabase config diff` first. Locally the app runs at
+# linked project (staging), or to production through `--workdir <prod>`,
+# with the overrides in [remotes.staging] and [remotes.production] at the end
+# of this file; run `supabase config diff` first. Locally the app runs at
 # http://localhost:3000 (not 127.0.0.1, and not over https).
 # - Sign-up is on, because a new member's first Google sign-in creates their
 #   user, and the `before_user_created` hook below
@@ -475,3 +476,19 @@ project_id = "sxlgelitcaolpiijfwsq"
 [remotes.staging.auth]
 site_url = "https://pillar-portal-staging.vercel.app"
 additional_redirect_urls = ["https://pillar-portal-staging.vercel.app/auth/callback"]
+
+# Production: overrides for the production project, applied only through its
+# own CLI workdir (`--workdir <prod>`, OPERATIONS.md go-live step 4), never by
+# relinking this checkout. Production has no personas, so its email provider
+# (sign-up and password sign-in) is off and Google is the only way in.
+# `supabase config diff --workdir <prod>` must show exactly these values
+# before `config push`. Everything not listed here is the same as local.
+[remotes.production]
+project_id = "riehhwhelzwgfdahuccw"
+
+[remotes.production.auth]
+site_url = "https://portal.thepillaruep.com"
+additional_redirect_urls = ["https://portal.thepillaruep.com/auth/callback"]
+
+[remotes.production.auth.email]
+enable_signup = false
