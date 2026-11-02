@@ -59,7 +59,7 @@ export function AdminBanners({ banners }: { banners: readonly AdminBanner[] }) {
  * Banners are notices, so a failing source fails on its own: its error is
  * logged (the error only) and the banners from the sources that answered
  * still show, rather than one source taking every admin page down. (Admin
- * home's counts, by contrast, still throw to Next's error page.) Since Next
+ * home's counts, by contrast, still throw, to (admin)/error.tsx.) Since Next
  * never sees that error, it is also recorded in error_events after the
  * response, as `render admin-banners #<index in ADMIN_BANNER_SOURCES>`.
  *

@@ -192,8 +192,17 @@ export function TaskForm({
     setValue,
     trigger,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isSubmitted },
   } = useForm<TaskFormValues>({
+    // A field shows its error once it is left, then re-checks as it is
+    // typed in. Only the registered inputs blur into validation: the Selects
+    // get no onBlur, since opening one blurs its trigger and would flag it
+    // mid-choice, so they wait for submit, then re-check on change. Under
+    // this mode useFieldArray also re-checks `slots` after every Add slot and
+    // Remove, which would flag untouched slot rows (two empty slots read as a
+    // repeated pair, an empty member as an invalid id), so the slot errors
+    // render only once the form has been submitted.
+    mode: "onTouched",
     resolver: task ? updateResolver : createResolver,
     defaultValues: task ? editValues(task) : emptyValues(),
   })
@@ -235,7 +244,7 @@ export function TaskForm({
     try {
       result = await createTaskAction(data)
     } catch {
-      toast.error("Couldn't create the task. Try again.")
+      toast.error(taskErrorMessage("tasks.create_failed"))
       return
     }
     if (!result.ok) {
@@ -280,7 +289,7 @@ export function TaskForm({
     router.push(`/dashboard/tasks/${taskId}`)
   }
 
-  const slotsRootError = errors.slots?.root
+  const slotsRootError = isSubmitted ? errors.slots?.root : undefined
 
   return (
     <form
@@ -375,6 +384,7 @@ export function TaskForm({
                 control={control}
                 setValue={setValue}
                 errors={errors}
+                showErrors={isSubmitted}
                 onRemove={
                   !slotsLocked && fields.length > 1
                     ? () => remove(index)
@@ -411,6 +421,7 @@ function SlotRow({
   control,
   setValue,
   errors,
+  showErrors,
   onRemove,
 }: {
   index: number
@@ -422,6 +433,8 @@ function SlotRow({
   control: Control<TaskFormValues>
   setValue: UseFormSetValue<TaskFormValues>
   errors: FieldErrors<TaskFormValues>
+  /** False until the form is submitted: see the useForm comment. */
+  showErrors: boolean
   onRemove?: () => void
 }) {
   const role = useWatch({ control, name: `slots.${index}.role` })
@@ -458,7 +471,7 @@ function SlotRow({
       ? options.allMembers.find((member) => member.id === memberId)
       : undefined
   const memberOptions = current ? [...listed, current] : listed
-  const rowErrors = errors.slots?.[index]
+  const rowErrors = showErrors ? errors.slots?.[index] : undefined
 
   // A member chosen for the old role isn't necessarily valid for the new
   // one, and the Select would just show it as unselected without this: the

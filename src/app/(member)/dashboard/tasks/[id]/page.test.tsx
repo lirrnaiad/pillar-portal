@@ -149,4 +149,22 @@ describe("TaskPage", () => {
     expect(TaskNotFound).toHaveBeenCalledOnce()
     expect(TaskDetailView).not.toHaveBeenCalled()
   })
+
+  // A failed read is not a missing task: the page rejects, so
+  // (member)/error.tsx shows "Couldn't load this page." inside the shell
+  // rather than the not-found block.
+  it("rejects when the task read throws, showing no not-found", async () => {
+    const readError = new Error("Couldn't read the task")
+    getTaskDetail.mockRejectedValue(readError)
+
+    await expect(
+      TaskPage({
+        params: Promise.resolve({ id: TASK_ID }),
+        searchParams: Promise.resolve({}),
+      })
+    ).rejects.toBe(readError)
+    expect(TaskNotFound).not.toHaveBeenCalled()
+    expect(TaskDetailView).not.toHaveBeenCalled()
+    expect(getReassignOptions).not.toHaveBeenCalled()
+  })
 })

@@ -1,8 +1,15 @@
+import { Suspense } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 // vi.mock factories run before this file's imports, so what they share with
 // the tests is created in vi.hoisted.
-const { requireActiveMember, MemberShell, RedirectError } = vi.hoisted(() => {
+const {
+  requireActiveMember,
+  MemberShell,
+  NoticeToast,
+  OfflineToast,
+  RedirectError,
+} = vi.hoisted(() => {
   // Like Next's redirect(), which requireActiveMember calls, the mock throws.
   class RedirectError extends Error {
     constructor(readonly url: string) {
@@ -12,6 +19,8 @@ const { requireActiveMember, MemberShell, RedirectError } = vi.hoisted(() => {
   return {
     requireActiveMember: vi.fn(),
     MemberShell: vi.fn(() => null),
+    NoticeToast: vi.fn(() => null),
+    OfflineToast: vi.fn(() => null),
     RedirectError,
   }
 })
@@ -19,6 +28,9 @@ const { requireActiveMember, MemberShell, RedirectError } = vi.hoisted(() => {
 // requireActiveMember's own tests (queries.test.ts) cover who it redirects.
 vi.mock("@/features/members", () => ({ requireActiveMember }))
 vi.mock("./member-shell", () => ({ MemberShell }))
+// notice-toast.test.tsx and offline-toast.test.tsx cover what they show.
+vi.mock("../notice-toast", () => ({ NoticeToast }))
+vi.mock("../offline-toast", () => ({ OfflineToast }))
 
 import type { CurrentMember } from "@/features/members"
 
@@ -47,7 +59,7 @@ describe("MemberLayout", () => {
   })
 
   it.each(["staff", "editorial_admin"] as const)(
-    "renders the member shell for an active %s member, with the notice-toast reader mounted before the page",
+    "renders the member shell for an active %s member, with the notice-toast reader and the offline toast mounted before the page",
     async (role) => {
       const member = { ...MEMBER, role }
       requireActiveMember.mockResolvedValue(member)
@@ -55,10 +67,20 @@ describe("MemberLayout", () => {
       const element = await MemberLayout({ children: "page" })
 
       expect(element.type).toBe(MemberShell)
-      expect(element.props.member).toEqual(member)
-      const children = element.props.children as unknown[]
-      expect(children[children.length - 1]).toBe("page")
-      expect(children.length).toBeGreaterThan(1)
+      expect(element.props).toEqual({
+        member,
+        children: [
+          expect.objectContaining({
+            type: Suspense,
+            props: expect.objectContaining({
+              fallback: null,
+              children: expect.objectContaining({ type: NoticeToast }),
+            }),
+          }),
+          expect.objectContaining({ type: OfflineToast }),
+          "page",
+        ],
+      })
     }
   )
 })
