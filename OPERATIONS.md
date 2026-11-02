@@ -51,25 +51,121 @@ then checked.
    scanning with push protection; `pillar-portal-backups` is private.
 4. **Owner:** give the developer's Supabase CLI access to the role account's
    organization (`supabase login`). Then create the production project in
-   Singapore, link it and run `pnpm exec supabase db push`. Check: `supabase
-   projects list` shows it on Postgres 17, every migration is applied, and the
-   sections, desks and positions rows exist. Its database password must be
-   letters and digits only, since the backup workflow refuses other
-   characters (section 6): reset it in the dashboard if it isn't. Save it in
-   the password manager.
+   Singapore. Its database password must be letters and digits only, since
+   the backup workflow refuses other characters (section 6): reset it in the
+   dashboard if it isn't. Save it in the password manager.
+
+   Then set up **`<prod>`, production's CLI workdir**. `<app>` is the
+   developer's checkout of `pillar-portal`, which stays linked to staging:
+   `cat <app>/supabase/.temp/project-ref` must print `sxlgelitcaolpiijfwsq`.
+   If it doesn't, stop and fix `<app>`'s link before anything else. `<prod>`
+   is a new, empty directory outside every repository. Write both as
+   absolute paths. `<prod>`'s `supabase/config.toml` and `supabase/migrations`
+   are symlinks to `<app>`'s, and it has no `seed.sql`, so nothing ever seeds
+   production. Run each `pnpm exec supabase` from `<app>`, on an up-to-date
+   `main`:
+
+   ```bash
+   mkdir -p <prod>/supabase
+   ln -s <app>/supabase/config.toml <app>/supabase/migrations <prod>/supabase/
+   pnpm exec supabase link --project-ref <project-ref> --workdir <prod>
+   git -C <app> status
+   cat <prod>/supabase/.temp/project-ref
+   pnpm exec supabase db push --workdir <prod> --dry-run
+   pnpm exec supabase db push --workdir <prod>
+   ```
+
+   If `link` asks for the database password, leave it blank. After `link`,
+   `git -C <app> status` shows nothing new. Before any production push,
+   `cat <prod>/supabase/.temp/project-ref` prints production's ref. Each
+   production push needs the owner's yes.
+
+   From here on, every CLI command against production passes
+   `--workdir <prod>`, as in sections 3 and 5; without it, `--linked` reaches
+   staging. Never relink `<app>`. The symlinks follow `<app>`'s checked-out
+   branch, so `db push`, `config diff` and `config push` through `<prod>` use
+   that branch's migrations and config. Run `config diff` and `config push`
+   against production only from an up-to-date `main`. Run `db push` from any
+   other branch only under step 7's rules.
+
+   Check: `pnpm exec supabase projects list` shows the project on Postgres
+   17; `pnpm exec supabase migration list --workdir <prod> --linked` shows
+   every migration applied; the sections, desks and positions rows exist
+   (`pnpm exec supabase db query --workdir <prod> --linked "select count(*) from public.positions"`,
+   and the same for `sections` and `desks`); and after this and every later
+   production step, `cat <app>/supabase/.temp/project-ref` still prints
+   `sxlgelitcaolpiijfwsq`.
 5. **Owner, in the Supabase dashboard:** switch the JWT signing key to ES256,
    and **turn off Realtime's "Allow public access"**. Check: the project's
    `jwks.json` shows `alg` `ES256`, and a signed-out client subscribing to
    `task-changes` receives nothing.
 6. **Owner:** create the production Google OAuth client (consent screen
    published, basic scopes only) with the redirect URI
-   `https://<project-ref>.supabase.co/auth/v1/callback`. Then run
-   `pnpm exec supabase config diff` and, with the owner's yes,
-   `pnpm exec supabase config push`. Check through the Management API: Google
-   is the only OAuth provider; the email provider (sign-up and sign-in),
-   phone and anonymous sign-in are off; the Site URL is `https://<app host>`;
-   the only redirect URL is `https://<app host>/auth/callback`; and
-   `select count(*) from auth.identities where provider = 'email'` returns 0.
+   `https://<project-ref>.supabase.co/auth/v1/callback`. Save its ID and
+   secret in the password manager as these two lines, which the developer
+   pastes later:
+
+   ```bash
+   SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<the production client's ID>
+   SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<its secret>
+   ```
+
+   Then, as the developer:
+   - Give `supabase/config.toml` production's block in a pull request, and
+     merge it before `config diff` and `config push`. If the file has no
+     `[remotes.production]`, add it at the end, after `[remotes.staging]`;
+     if it has one, edit only its `project_id`. Never write a second block.
+     Production has no personas, so its email provider is off:
+
+     ```toml
+     [remotes.production]
+     project_id = "<project-ref>"
+
+     [remotes.production.auth]
+     site_url = "https://<app host>"
+     additional_redirect_urls = ["https://<app host>/auth/callback"]
+
+     [remotes.production.auth.email]
+     enable_signup = false
+     ```
+
+   - From `<app>`, on an up-to-date `main`, open a clean shell, clear both
+     Google variables and write `<prod>/supabase/.env.local`. At the `cat`,
+     paste the two lines from the password manager, press Enter after the
+     last one, then Ctrl-D:
+
+     ```bash
+     bash --noprofile --norc
+     unset SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET
+     (umask 077; cat > <prod>/supabase/.env.local)
+     chmod 600 <prod>/supabase/.env.local
+     grep -c '^SUPABASE_AUTH_EXTERNAL_GOOGLE_' <prod>/supabase/.env.local
+     ```
+
+     The `grep` must print 2.
+   - Load the two variables in that shell, check both are set, then run
+     `config diff`:
+
+     ```bash
+     set -a; . <prod>/supabase/.env.local; set +a
+     test -n "${SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID}" && test -n "${SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET}" && echo "both set"
+     pnpm exec supabase config diff --workdir <prod>
+     ```
+
+     It must show the production client's ID (never the literal
+     `env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)`, which `config push`
+     would push as the value), the production Site URL and redirect URL, and
+     email sign-up off. If it shows a localhost or staging Site URL, or
+     email sign-up on, stop. Otherwise, with the owner's yes, run
+     `pnpm exec supabase config push --workdir <prod>` in that shell.
+
+   Check, in the same shell: `pnpm exec supabase config diff --workdir <prod>`
+   shows no difference, so production has the committed settings (Google the
+   only OAuth provider; the email provider, phone and anonymous sign-in off;
+   the Site URL `https://<app host>`; the only redirect URL
+   `https://<app host>/auth/callback`); and
+   `pnpm exec supabase db query --workdir <prod> --linked "select count(*) from auth.identities where provider = 'email'"`
+   returns 0. Then `exit`, and close the terminal or clear its scrollback.
 7. **Owner:** sign the Vercel CLI in as the role account and give the Vercel
    GitHub app access to `pillar-portal`. Then create the production Hobby
    project and set its variables with `vercel env add`:
@@ -102,12 +198,53 @@ then checked.
    `vercel api /v1/projects/<project>/unpause -X POST` instead. Record which
    form worked here, since a real restore pauses and resumes in that form:
    not yet rehearsed.
-   - **Open decision: how `main` reaches production.** Option 1 (preferred):
-     stay trunk-based, keep migrations additive, push each migration to
-     production before the merge that needs it, and use Vercel's Instant
-     Rollback as the undo. Option 2: Vercel deploys a `production` branch
-     that is fast-forwarded from `main` after the staging checks. Decide here
-     and record the decision in this file.
+   - **How `main` reaches production** (decided 2026-11-02). Production
+     deploys `main` on every merge, with no separate production branch, and
+     Vercel's Instant Rollback is the undo.
+     - **Staging no longer gates production,** since both deploy on the
+       merge. A story's pre-production and manual checks run on its pull
+       request's Vercel preview (staging's database, personas) before the
+       merge.
+     - **Migrations stay additive:** new tables, nullable or defaulted
+       columns, new functions or overloads. Anything else goes expand,
+       deploy, then contract in a later pull request: a drop, a rename, a
+       changed RPC signature, return type or meaning that the live code
+       calls, a new NOT NULL column without a default, tighter RLS or
+       constraints.
+     - **A pull request's migrations go out before its merge.** Push them
+       only once the pull request is approved, `ci` is green and it is
+       rebased on current `main`, then merge straight after. From its branch
+       in `<app>`:
+
+       ```bash
+       cat <app>/supabase/.temp/project-ref
+       pnpm exec supabase db push --linked --dry-run
+       pnpm exec supabase db push --linked
+       pnpm exec supabase test db --linked
+       pnpm exec supabase migration list --linked
+       cat <prod>/supabase/.temp/project-ref
+       pnpm exec supabase db push --workdir <prod> --dry-run
+       pnpm exec supabase db push --workdir <prod>
+       pnpm exec supabase migration list --workdir <prod> --linked
+       ```
+
+       The first `cat` prints `sxlgelitcaolpiijfwsq` (staging), the second
+       production's ref. Each dry run must list only that pull request's
+       migrations. Never use `--include-all`. Each production push needs the
+       owner's yes, as `config push` does. After both pushes, each
+       `migration list` shows no local-only and no remote-only row.
+     - **If the pull request is then abandoned or must change,** never edit
+       the applied migration. Keep its file and land it on `main` with a new
+       migration that reverts or amends it, so `main` always holds every
+       version production has: a restore copies migrations from `main`
+       (section 6).
+     - **Instant Rollback** (`vercel rollback`, or the dashboard) rolls back
+       code only, never a migration, which is why migrations stay additive.
+       On Hobby it goes back only to the previous production deployment; if
+       that one is bad too, revert the pull request on `main` and let it
+       deploy. After a rollback, Vercel stops assigning production to new
+       deployments: once the fix merges, run `vercel promote <deployment>`
+       (or undo the rollback) so production follows `main` again.
 8. **Owner:** create the Resend account, a Resend API key and a Cloudflare API
    token limited to this zone's DNS; keep both in the password manager and
    share them with the developer for this step only. Then add the sending
@@ -115,9 +252,15 @@ then checked.
    and DMARC (`p=none` to start) through the Cloudflare API. Check: `dig`
    shows all three records and Resend reports the domain verified. Nothing is
    sent until Story 4.4.
-9. **Owner:** create the uptime monitor's account and its check on
-   `https://<app host>/api/health` every 5 minutes. Check: a test alert
-   reaches the role account.
+9. **The first admin:** the current Editor-in-Chief signs in once on
+   production with Google and sees Awaiting approval. Run the bootstrap
+   (section 3). Check: their next page load lands on What's mine as the
+   Editor-in-Chief, with the admin area available, and their first Admin
+   home (`/admin`) shows "No backup has run yet.". The backup banner shows
+   only on production (`isProduction`: `VERCEL_ENV` is `production`, and the
+   Supabase project is neither local nor staging), so seeing it proves step
+   7's `VERCEL_ENV` reaches the app. They then approve the rest of the Board
+   at `/admin/members`.
 10. **Owner:** generate the production `age` key pair (`age-keygen`); keep the
     private key in the password manager, labelled with today's date and its
     public key, plus a sealed offline copy. Then,
@@ -143,43 +286,96 @@ then checked.
     `backup.sql.gz.age`, `counts.tsv`, `migrations.txt` and `recipient.txt`
     (the new public key)
     (`gh run download <run id> -R <owner>/pillar-portal-backups -n backup-<n> -D <dir>`,
-    then `ls <dir>` and `rm -r <dir>`); and production's `job_runs` shows a
+    then `ls <dir>` and `rm -r <dir>`); production's `job_runs` shows a
     `backup` run with status `ok` and the detail `{"bytes": <size>}`
-    (section 5). Then the developer deletes Story 2.5's test key file,
-    `~/.config/pillar-portal-backups/test-key.txt`.
-11. **The restore test (a launch gate). It waits for step 13**, so that
+    (section 5); and on the Editor-in-Chief's next Admin home load, "No
+    backup has run yet." is gone. Then the developer deletes Story 2.5's
+    test key file, `~/.config/pillar-portal-backups/test-key.txt`.
+11. **The restore test (a launch gate). It waits for step 12**, so that
     production holds members, positions, a task with slots and sign-in
     sessions, and the test compares real counts rather than zeros. After
-    step 13, run the workflow once more
-    (`gh workflow run backup.yml -R <owner>/pillar-portal-backups`), then run
-    section 6's restore test on that run's artifact. Record it in section
-    6's restore test log.
-12. **The first admin:** the current Editor-in-Chief signs in once on
-    production with Google and sees Awaiting approval. Run the bootstrap
-    (section 3). Check: their next page load lands on What's mine as the
-    Editor-in-Chief, with the admin area available. They then approve the
-    rest of the Board at `/admin/members`.
-13. **The Messenger check:** the Editor-in-Chief creates the task "Launch
-    check — Messenger link" with the developer in a slot and pastes its Copy
-    for Messenger message into a chat. On a real iPhone and a real Android
-    phone, open the link from Messenger, follow **Open in your browser**,
-    sign in once with Google, then open the link from Messenger again: it
-    must reach the task signed in. Then tap I'm on it, move it to For Review,
-    and the Editor-in-Chief marks it Done.
+    step 12, run the workflow once more
+    (`gh workflow run backup.yml -R <owner>/pillar-portal-backups`). Go
+    live's test is hosted: it restores that run's artifact into a scratch
+    project, with section 6's real-restore steps 2–5, run from a `<new>`
+    workdir. Production is never touched, paused or repointed.
+    - The restore test's preparations apply (section 6: `<app>`,
+      `<backups>`, absolute paths, one `bash` session, and the restore
+      test's step 1, the key). Start at the real restore's step 2. The real
+      restore's step 1 doesn't run, so production stays open and the
+      workflow stays enabled.
+    - In the real restore's step 3, the new project is the scratch project,
+      made in the role account's organization in Singapore. `<new>`'s
+      migrations are copies of exactly the versions in `migrations.txt`,
+      taken from `main` as that step says, never from `<app>`'s checked-out
+      branch. Don't write `<new>/supabase/.env.local`, and skip the
+      `[remotes.production]` edit and the paragraph on go-live steps 4–6:
+      there is no config push.
+    - The real restore's steps 4 and 5 load the backup and compare the
+      counts. They must match. Its steps 6 to 11 don't run.
+    - Once loaded, the scratch project holds a full decrypted copy of
+      production, auth rows included, under default auth settings. Delete
+      it in the same session, right after the comparison: with the owner's
+      yes, in its dashboard's settings or with
+      `pnpm exec supabase projects delete <scratch project ref>`. Check with
+      `pnpm exec supabase projects list` that it's gone. Then delete the key
+      files and the `<backup>` and `<new>` directories, `pgpass` included.
+      The load decrypts only in its pipe, so once the scratch project is
+      gone, no decrypted copy remains. Check that
+      `<app>/supabase/.temp/project-ref` still prints `sxlgelitcaolpiijfwsq`,
+      and `exit` the bash session.
+    - If the load fails or a count doesn't match, the test failed. Record it
+      as failed in section 6's log; step 16 is blocked. The clean-up above
+      still runs. Find the cause (usually the wrong set of migrations), then
+      run the test again on a fresh backup.
+
+    Record each run in section 6's restore test log.
+12. **The Messenger and Facebook check:** the Editor-in-Chief creates the task
+    "Launch check — Messenger link" with the developer in a slot and pastes
+    its Copy for Messenger message into a chat. On a real iPhone and a real
+    Android phone, open the link from Messenger, follow **Open in your
+    browser**, sign in once with Google, then open the link from Messenger
+    again: it must reach the task signed in, through **Open in your
+    browser** if Messenger opened the link in its own browser. Then, from
+    one Facebook account signed in on both phones, put the same link in a
+    post with the audience Only me, and open it from the post in the
+    Facebook app on each phone: the same rule applies. Delete the post
+    afterwards. Then the developer, on either phone, taps I'm on it and
+    moves the task to For Review, and the Editor-in-Chief marks it Done.
+13. **Owner:** create the uptime monitor's account and its check on
+    `https://<app host>/api/health` every 5 minutes. Check: a test alert
+    reaches the role account.
 14. **By November 30:** the Board decides whether to license the wordmark
     font or use the logo artwork. Until then the header sets the wordmark in
     Georgia; the font file is never committed.
-15. **Security headers:** decide on `Strict-Transport-Security`,
-    `Permissions-Policy`, `Cross-Origin-Opener-Policy` and CSP violation
-    reporting, apply what is adopted in `src/lib/security-headers.ts`, and
-    record the decision here.
+15. **Security headers** (decided 2026-11-02). `src/lib/security-headers.ts`
+    sends these, beside the CSP, `nosniff` and `Referrer-Policy`:
+    - `Strict-Transport-Security: max-age=63072000` (two years), only to an
+      https site outside `next dev`. It has no `includeSubDomains`, so it
+      holds only the app's hostname to https and no other name on the
+      domain, and so no `preload` either, which requires it.
+    - `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`:
+      the portal uses none of them.
+    - `Cross-Origin-Opener-Policy: same-origin`: sign-in is a redirect,
+      never a popup.
+    - No CSP violation reporting: `error_events` holds unexpected server
+      faults only, never anything a browser sends.
+
+    Check: `curl -sI https://<app host>/login` and
+    `curl -sI https://<app host>/api/health` each show
+    `content-security-policy`, `x-content-type-options`, `referrer-policy`,
+    `permissions-policy`, `cross-origin-opener-policy`, and
+    `strict-transport-security` on exactly one line, with the value
+    `max-age=63072000`.
 16. **The launch gates, together:** production has no email identities and
-    its email provider is off; the Messenger check passed on both phones;
-    SPF, DKIM and DMARC are published and the domain is verified in Resend; a
-    restore test passed; personas are off in production;
-    `supabase migration list --linked` against production shows no
-    local-only migration; and Story 1.10's manual checks passed on a real
-    iPhone. Only then is the first real task entered.
+    its email provider is off; the Messenger and Facebook checks passed on
+    both phones; SPF, DKIM and DMARC are published and the domain is
+    verified in Resend; the hosted restore test matched and its date is in
+    section 6's log; personas are off in production;
+    `pnpm exec supabase migration list --workdir <prod> --linked`, run from
+    an up-to-date `main`, shows no local-only and no remote-only version;
+    and Story 1.10's manual checks passed on a real iPhone. Only then is the
+    first real task entered.
 
 ## 3. The bootstrap
 
@@ -197,10 +393,11 @@ returns their member id.
 
 **Who can run it:** only the database owner, as SQL. No API role (`anon`,
 `authenticated`, `service_role`) holds EXECUTE on it, so the app can't call
-it. Run it one of two ways, with the CLI linked to production:
+it. Run it one of two ways: from `<app>`, through production's CLI workdir
+(go-live step 4):
 
 ```bash
-pnpm exec supabase db query --linked "select private.bootstrap_admin('<email>')"
+pnpm exec supabase db query --workdir <prod> --linked "select private.bootstrap_admin('<email>')"
 ```
 
 or in the Supabase dashboard's SQL Editor, which runs as `postgres`:
@@ -235,9 +432,10 @@ surrounding spaces don't matter. An apostrophe in the email is doubled:
 `o''brien@…`. It is one statement, so `supabase db query` takes it. Run it in
 production's dashboard SQL Editor, which runs as `postgres`, or save it to a
 file and run
-`pnpm exec supabase db query --db-url "<production connection string>" -f <file>`.
-Never relink the checkout to production for it: the checkout stays linked to
-staging, so `--linked` would run it there.
+`pnpm exec supabase db query --workdir <prod> --linked -f <file>` from
+`<app>` (go-live step 4). Never relink the checkout to production for it:
+the checkout stays linked to staging, so `--linked` without
+`--workdir <prod>` would run it there.
 `supabase/tests/members/undo_decline.test.sql` runs this exact statement, so
 change the two together; `src/features/members/undo-decline-runbook.test.ts`
 fails when they differ.
@@ -297,10 +495,11 @@ When the Online Manager or the developer changes:
      characters), then update `pillar-portal-backups`' session-pooler URL
      secret with `gh secret set`.
    - **The OAuth secrets:** make a new client secret for the production
-     Google OAuth client in Google Cloud, push it with
-     `pnpm exec supabase config push` (the CLI reads it from
-     `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` in the git-ignored
-     `supabase/.env.local`), then delete the old secret.
+     Google OAuth client in Google Cloud, and save the two lines in the
+     password manager. Rewrite both lines of `<prod>/supabase/.env.local`
+     the go-live step 6 way (a clean shell and `cat`, never an editor), then
+     run `config diff` and `config push` with `--workdir <prod>` as that
+     step does. Then delete the old secret.
    - **The backup key:** generate a new `age` key pair, commit the new public
      key to `pillar-portal-backups` as `age-recipients.txt`, and keep the old
      private key until the last backup encrypted to it has expired (90 days).
@@ -321,7 +520,11 @@ When the Online Manager or the developer changes:
 
 Staging (its Supabase and Vercel projects, its secret key and its persona
 password) lives in the developer's own accounts, so a developer handover
-moves it or recreates it.
+moves it or recreates it. Production's CLI workdir, `<prod>`, lives on the
+developer's machine. A new developer sets up only its workdir parts: go-live
+step 4's `mkdir`, symlinks and `link`, and `.env.local` written the step 6
+way. The outgoing developer deletes `<prod>/supabase/.env.local`, which
+holds the Google secret.
 
 ## 5. Reading `job_runs` and `error_events`
 
@@ -373,8 +576,9 @@ Neither table holds names, emails, messages, tokens or request bodies.
 `entity_id` is only a row id, but for `member` rows it is a member's id,
 which an admin can join back to a person; a later erasure story should cover
 it. Admins can read both; nobody writes them except the server's commands.
-Run these in the dashboard's SQL Editor, or with
-`pnpm exec supabase db query --linked "<query>"`.
+Run these in production's dashboard SQL Editor, or from `<app>` with
+`pnpm exec supabase db query --workdir <prod> --linked "<query>"` (go-live
+step 4). Without `--workdir <prod>`, `--linked` reaches staging.
 
 The latest run of each job:
 
@@ -529,9 +733,10 @@ production's last `ok` backup.
 ### The restore test
 
 It proves a backup can be read and loaded, without touching production: the
-backup goes into a throwaway local database. Run it at go live (step 11),
-after every change of backup key (section 4), and once a semester, and
-record each in the log at the end of this section.
+backup goes into a throwaway local database. Run it after every change of
+backup key (section 4) and once a semester, and record each in the log at
+the end of this section. Go live runs the hosted test instead (step 11): the
+real restore's steps 2–5, into a scratch Supabase project.
 
 It needs a checkout of `pillar-portal` with `pnpm install` done (`<app>`), a
 clone of `pillar-portal-backups` (`<backups>`, for its `restore/` files),
@@ -735,20 +940,22 @@ in the restore test.
    Write them fresh like this; never copy a developer checkout's
    `supabase/.env.local`, which holds whichever client that checkout uses.
    Copy in the migrations in `migrations.txt` exactly as in the restore
-   test's step 4, into `<new>` instead of `<restore>`. If production's
-   settings live in a `[remotes.<name>]` block of `config.toml`, set its
-   `project_id` in `<new>/supabase/config.toml` to the new project's ref.
-   Then:
+   test's step 4, into `<new>` instead of `<restore>`. Production has one
+   block in `config.toml`, `[remotes.production]`: set its `project_id` in
+   `<new>/supabase/config.toml`, `<new>`'s own copy, to the new project's
+   ref. Then:
 
    ```bash
    pnpm exec supabase link --project-ref <new project ref> --workdir <new>
    pnpm exec supabase db push --workdir <new>
    ```
 
-   Then go through go-live steps 4–6 for it (step 4's link and push are the
-   two commands above), with `--workdir <new>` on every CLI command
-   (`config diff` and `config push` included). In step 6, keep the
-   production OAuth client; its redirect URI moves in step 9 below.
+   Then go through go-live steps 4–6 for it (step 4's workdir, link and push
+   are the commands above, and step 6's `.env.local` is the one just
+   written), with `--workdir <new>` on every CLI command (`config diff` and
+   `config push` included). In step 6, `<new>`'s copy already has the new
+   ref, so there is no pull request until step 9 below, and keep the
+   production OAuth client; its redirect URI moves in step 9.
 4. **Load the data** with `psql` 17 or newer on your machine. The password
    goes only into a password file only you can read, never onto a command
    line or into an editor:
@@ -813,7 +1020,16 @@ in the restore test.
    - Google Cloud: the production OAuth client's redirect URI becomes
      `https://<new project ref>.supabase.co/auth/v1/callback`;
    - `gh secret set SUPABASE_DB_URL -R <owner>/pillar-portal-backups`, with
-     the new project's session-pooler URL pasted at the prompt.
+     the new project's session-pooler URL pasted at the prompt;
+   - the CLI: set `[remotes.production]`'s `project_id` in `<app>`'s
+     `supabase/config.toml` to the new ref in a pull request, and merge it.
+     Only once `<app>`'s `main` has the new ref, relink production's
+     workdir from an up-to-date `main`
+     (`pnpm exec supabase link --project-ref <new project ref> --workdir <prod>`),
+     check that `cat <prod>/supabase/.temp/project-ref` prints the new ref,
+     and run `pnpm exec supabase config diff --workdir <prod>` (with
+     `.env.local`'s variables loaded, as in go-live step 6) before any push
+     through `<prod>`.
 10. **Check backups again:**
     `gh workflow enable backup.yml -R <owner>/pillar-portal-backups`, then
     `gh workflow run backup.yml -R <owner>/pillar-portal-backups`, and check

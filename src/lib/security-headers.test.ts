@@ -8,6 +8,12 @@ const STAGING = {
   isDev: false,
 }
 
+const LOCAL = {
+  supabaseUrl: "http://127.0.0.1:54321",
+  siteUrl: "http://localhost:3000",
+  isDev: true,
+}
+
 function header(headers: ReturnType<typeof securityHeaders>, key: string) {
   const matches = headers.filter((h) => h.key === key)
   expect(matches).toHaveLength(1)
@@ -30,11 +36,70 @@ describe("securityHeaders", () => {
     const headers = securityHeaders(STAGING)
     expect(header(headers, "X-Content-Type-Options")).toBe("nosniff")
     expect(header(headers, "Referrer-Policy")).toBe("same-origin")
-    expect(headers.map((h) => h.key).sort()).toEqual([
+  })
+
+  it("sends exactly these headers to an https site", () => {
+    expect(
+      securityHeaders(STAGING)
+        .map((h) => h.key)
+        .sort()
+    ).toEqual([
       "Content-Security-Policy",
+      "Cross-Origin-Opener-Policy",
+      "Permissions-Policy",
       "Referrer-Policy",
+      "Strict-Transport-Security",
       "X-Content-Type-Options",
     ])
+  })
+
+  it("sends every header except HSTS to an http site", () => {
+    for (const isDev of [false, true]) {
+      expect(
+        securityHeaders({ ...LOCAL, isDev })
+          .map((h) => h.key)
+          .sort()
+      ).toEqual([
+        "Content-Security-Policy",
+        "Cross-Origin-Opener-Policy",
+        "Permissions-Policy",
+        "Referrer-Policy",
+        "X-Content-Type-Options",
+      ])
+    }
+  })
+
+  it("pins https for two years, without subdomains or preload", () => {
+    expect(header(securityHeaders(STAGING), "Strict-Transport-Security")).toBe(
+      "max-age=63072000"
+    )
+  })
+
+  it("sends no HSTS under next dev, even to an https site", () => {
+    // `next dev --experimental-https` would pin localhost for two years.
+    expect(
+      securityHeaders({
+        ...LOCAL,
+        siteUrl: "https://localhost:3000",
+        isDev: true,
+      }).some((h) => h.key === "Strict-Transport-Security")
+    ).toBe(false)
+  })
+
+  it("always turns off camera, microphone, geolocation, payment and USB", () => {
+    for (const options of [STAGING, LOCAL]) {
+      expect(header(securityHeaders(options), "Permissions-Policy")).toBe(
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+      )
+    }
+  })
+
+  it("always isolates the window from cross-origin openers", () => {
+    for (const options of [STAGING, LOCAL]) {
+      expect(
+        header(securityHeaders(options), "Cross-Origin-Opener-Policy")
+      ).toBe("same-origin")
+    }
   })
 
   it("builds the production CSP for an https site", () => {
@@ -104,11 +169,7 @@ describe("securityHeaders", () => {
   })
 
   it("uses the local Supabase origin over http and ws", () => {
-    const local = csp({
-      supabaseUrl: "http://127.0.0.1:54321",
-      siteUrl: "http://localhost:3000",
-      isDev: true,
-    })
+    const local = csp(LOCAL)
     expect(local.get("connect-src")).toEqual([
       "'self'",
       "http://127.0.0.1:54321",
