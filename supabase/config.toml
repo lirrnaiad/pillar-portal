@@ -150,8 +150,11 @@ max_catalogs = 2
 # [storage.analytics.buckets.my-warehouse]
 
 # Store vector embeddings in S3 for large and durable datasets
+# Off: the portal stores no embeddings, and vector buckets need the Pro plan.
+# `supabase init` wrote `true` here, which `config push` would otherwise
+# apply to every remote project.
 [storage.vector]
-enabled = true
+enabled = false
 max_buckets = 10
 max_indexes = 5
 
